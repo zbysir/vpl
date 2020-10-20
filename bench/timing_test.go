@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/valyala/quicktemplate"
+	"github.com/zbysir/vpl"
+	"github.com/zbysir/vpl/internal/compiler"
 	"testing"
 )
 
@@ -47,7 +49,7 @@ func benchmarkQuickTemplate(b *testing.B, rowsCount int) {
 
 func benchmarkVpl(b *testing.B, rowsCount int) {
 	rows := getBenchRows(rowsCount)
-	vue := vpl.NewVue()
+	vue := vpl.New()
 	err := vue.ComponentTxt("main", `<html>
 	<head><title>test</title></head>
 	<body>
@@ -64,7 +66,7 @@ func benchmarkVpl(b *testing.B, rowsCount int) {
 	var ii interface{}
 	bs, _ := json.Marshal(rows)
 	json.Unmarshal(bs, &ii)
-	props := vpl.NewPropsR()
+	props := compiler.NewPropsR()
 	props.AppendMap(map[string]interface{}{
 		"rows": ii,
 	})
