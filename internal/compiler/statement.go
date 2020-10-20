@@ -61,9 +61,12 @@ func (s *Scope) Set(k string, v interface{}) {
 	s.Value[k] = v
 }
 
-// Options 是渲染tag或者组件的参数
-type Options struct {
-	scope Scope
+type Directive func(ctx *StatementCtx, options *StatementOptions, binding *DirectivesBinding)
+
+type DirectivesBinding struct {
+	Value interface{}
+	Arg   string
+	Name  string
 }
 
 // 编译之后的Prop
@@ -206,6 +209,26 @@ func compileVBind(v *parser.VBind) (*VBindC, error) {
 	return &VBindC{Val: &JsExpression{node: node, code: v.Val}}, nil
 }
 
+func compileDirective(ds parser.Directives) (DirectivesC, error) {
+	if len(ds) == 0 {
+		return nil, nil
+	}
+
+	pc := make(DirectivesC, len(ds))
+	for i, v := range ds {
+		node, err := compileJS(v.Value)
+		if err != nil {
+			return nil, fmt.Errorf("parseJs err: %w", err)
+		}
+		pc[i] = DirectiveC{
+			Name:  v.Name,
+			Value: &JsExpression{node: node, code: v.Value},
+			Arg:   v.Arg,
+		}
+	}
+	return pc, nil
+}
+
 type PropsC []*PropC
 
 // 执行编译之后的PropsC, 返回数值PropsR.
@@ -246,9 +269,17 @@ type TagStruct struct {
 	StaticClass parser.Class
 	StaticStyle parser.Styles
 
-	Directives parser.Directives
+	Directives DirectivesC
 	Slots      Slots
 }
+
+type DirectiveC struct {
+	Name  string     // v-animate
+	Value Expression // {'a': 1}
+	Arg   string     // v-set:arg
+}
+
+type DirectivesC []DirectiveC
 
 // 组件的属性
 type ComponentStruct struct {
@@ -389,11 +420,26 @@ type TagStartStatement struct {
 	tagStruct TagStruct
 }
 
+func execDirectives(ds DirectivesC, ctx *StatementCtx, o *StatementOptions) {
+	for _, v := range ds {
+		val := v.Value.Exec(o.Scope)
+		ctx.Directives[v.Name](ctx, o, &DirectivesBinding{
+			Value: val,
+			Arg:   v.Arg,
+			Name:  v.Name,
+		})
+	}
+}
+
 func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+	// 执行指令
+	// TODO 指令有可能会修改tagStruct
+	if len(t.tagStruct.Directives) != 0 {
+		execDirectives(t.tagStruct.Directives, ctx, o)
+	}
+
 	// 将tagStruct根据scope变量渲染出属性
 	var attrs strings.Builder
-	//attr.
-	//attrs := ""
 
 	// 处理class
 	cla := parser.NewClass()
@@ -437,7 +483,6 @@ func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	if len(t.tagStruct.Props) != 0 {
 		propsR.appendProps(t.tagStruct.Props.exec(o.Scope))
 	}
-
 	propsR.ForEach(func(index int, p *PropR) {
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
@@ -858,6 +903,7 @@ type StatementCtx struct {
 	W   Writer
 
 	Components map[string]Statement
+	Directives map[string]Directive
 }
 
 func (c *StatementCtx) NewScope() *Scope {
@@ -873,6 +919,7 @@ func (c *StatementCtx) Clone() *StatementCtx {
 		Ctx:        c.Ctx,
 		W:          c.W,
 		Components: c.Components,
+		Directives: c.Directives,
 	}
 }
 
@@ -1044,6 +1091,13 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				if err != nil {
 					return nil, nil, err
 				}
+
+				dir, err := compileDirective(v.Directives)
+				if err != nil {
+					return nil, nil, err
+
+				}
+
 				sg.Append(&TagStartStatement{
 					tag: v.Tag,
 					tagStruct: TagStruct{
@@ -1052,7 +1106,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 						PropStyle:   ps,
 						StaticClass: v.Class,
 						StaticStyle: v.Style,
-						Directives:  v.Directives,
+						Directives:  dir,
 						Slots:       nil,
 						VBind:       vbind,
 					},

@@ -170,7 +170,7 @@ type VueElement struct {
 	PropStyle  *Prop // 动态style
 	Props      Props // props, 动态和静态, 不包括class和style
 	VBind      *VBind
-	Directives []Directive   // 自定义指令, 运行时
+	Directives Directives   // 自定义指令, 运行时
 	Class      Class         // 静态class
 	Style      Styles        // 静态style
 	Children   []*VueElement // 子节点

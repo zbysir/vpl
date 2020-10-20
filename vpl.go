@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/valyala/bytebufferpool"
 	"github.com/zbysir/vpl/internal/compiler"
-	"github.com/zbysir/vpl/internal/parser"
 	"github.com/zbysir/vpl/internal/util"
 	"io/ioutil"
 	"sync"
@@ -20,10 +19,10 @@ type Vpl struct {
 	prototype *compiler.Scope
 
 	// 指令
-	directives map[string]parser.Directive
+	directives map[string]compiler.Directive
 
 	// 什么prop可以被写成attr
-	canBeAttr func(key string, data interface{}) bool
+	canBeAttr func(p *compiler.PropR) bool
 }
 
 func New() *Vpl {
@@ -105,35 +104,7 @@ func New() *Vpl {
 			}),
 		},
 		prototype:  compiler.NewScope(),
-		directives: nil,
-	}
-}
-
-type ChanSpan struct {
-	c       chan string
-	getOnce sync.Once
-	setOnce sync.Once
-	r       string
-}
-
-func (p *ChanSpan) Result() string {
-	p.getOnce.Do(func() {
-		p.r = <-p.c
-	})
-	return p.r
-}
-
-func (p *ChanSpan) Done(s string) {
-	p.setOnce.Do(func() {
-		p.c <- s
-	})
-}
-
-func NewChanSpan() *ChanSpan {
-	return &ChanSpan{
-		c:       make(chan string, 1),
-		getOnce: sync.Once{},
-		setOnce: sync.Once{},
+		directives: map[string]compiler.Directive{},
 	}
 }
 
@@ -162,22 +133,26 @@ func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
 
 // 设置全局变量
 // 在所有的组件中都生效
+// 用于设置全局方法
 func (v *Vpl) Global(name string, val interface{}) () {
 	v.prototype.Set(name, val)
 	return
 }
+
+// export from internal
+type Directive = compiler.Directive
+type StatementCtx = compiler.StatementCtx
+type StatementOptions = compiler.StatementOptions
+
+func (v *Vpl) Directive(name string, val Directive) () {
+	v.directives[name] = val
+	return
+}
+
 func (v *Vpl) NewScope() *compiler.Scope {
 	s := compiler.NewScope()
 	s.Parent = v.prototype
 	return s
-}
-
-type RenderParam struct {
-	// 本次渲染的全局变量, 在所有组件中都有效
-	Global map[string]interface{}
-
-	Ctx   context.Context
-	Props *compiler.Props
 }
 
 // tpl e.g.: <main v-bind="$props"></main>
@@ -197,9 +172,11 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 	}
 	ctx := &compiler.StatementCtx{
 		Global:     global,
+		Store:      nil,
 		Ctx:        p.Ctx,
 		W:          w,
 		Components: v.components,
+		Directives: v.directives,
 	}
 
 	propsMap := p.Props.ToMap()
@@ -249,9 +226,11 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 	}
 	ctx := &compiler.StatementCtx{
 		Global:     global,
+		Store:      compiler.Store{},
 		Ctx:        p.Ctx,
 		W:          w,
 		Components: v.components,
+		Directives: v.directives,
 	}
 	err = statement.Exec(ctx, &compiler.StatementOptions{
 		Slots:     nil,
@@ -322,6 +301,42 @@ func (s *StringSpan) Result() string {
 
 func NewListWriter() *ListWriter {
 	return &ListWriter{}
+}
+
+type ChanSpan struct {
+	c       chan string
+	getOnce sync.Once
+	setOnce sync.Once
+	r       string
+}
+
+func (p *ChanSpan) Result() string {
+	p.getOnce.Do(func() {
+		p.r = <-p.c
+	})
+	return p.r
+}
+
+func (p *ChanSpan) Done(s string) {
+	p.setOnce.Do(func() {
+		p.c <- s
+	})
+}
+
+func NewChanSpan() *ChanSpan {
+	return &ChanSpan{
+		c:       make(chan string, 1),
+		getOnce: sync.Once{},
+		setOnce: sync.Once{},
+	}
+}
+
+type RenderParam struct {
+	// 本次渲染的全局变量, 在所有组件中都有效
+	Global map[string]interface{}
+
+	Ctx   context.Context
+	Props *compiler.Props
 }
 
 func NewProps() *compiler.Props {
