@@ -195,17 +195,10 @@ author: {{author}}
 				{
 					Name: "main",
 					Txt: `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Title</title>
-</head>
 <body>
 <div v-html="html"></div>
 <template v-text="html"></template>
 </body>
-</html>
 `,
 				},
 			},

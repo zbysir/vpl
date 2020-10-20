@@ -98,6 +98,9 @@ var VoidElements = map[string]bool{
 
 // Close当前节点, 返回父级节点
 func (p *Node) Close(tag string) *Node {
+	if p == nil {
+		return nil
+	}
 	if p.NodeType == ElementNode {
 		// case for '<p><input></p>'
 		if _, void := VoidElements[p.Tag]; void {
