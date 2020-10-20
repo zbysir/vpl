@@ -545,17 +545,13 @@ type ForStatement struct {
 }
 
 func (f ForStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	r := f.Array.Exec(o.Scope)
+	arr := f.Array.Exec(o.Scope)
 
-	for index, item := range interface2Slice(r) {
+	for index, item := range interface2Slice(arr) {
 		scope := o.Scope.Extend(map[string]interface{}{
 			f.IndexKey: index,
 			f.ItemKey:  item,
 		})
-
-		//log.Infof("%v %v", index, scope.Get("item", "ID"))
-
-		// log.Infof("%+v", NicePrintStatement(f.ChildChunks,0))
 
 		err := f.ChildChunks.Exec(ctx, &StatementOptions{
 			Scope: scope,
@@ -752,16 +748,29 @@ func (s *VSlotStatementR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error 
 	})
 }
 
-// 胡子语法
-// {{a}}
-type ExpressionStatement struct {
+// 胡子语法: {{a}}
+// 会进行html转义
+type MustacheStatement struct {
 	exp Expression
 }
 
-func (i *ExpressionStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (i *MustacheStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.exp.Exec(o.Scope)
 
 	ctx.W.WriteString(interfaceToStr(r, true))
+	return nil
+}
+
+// 不会转义的html语句
+// 用于v-html
+type RawHtmlStatement struct {
+	exp Expression
+}
+
+func (i *RawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+	r := i.exp.Exec(o.Scope)
+
+	ctx.W.WriteString(interfaceToStr(r, false))
 	return nil
 }
 
@@ -891,6 +900,8 @@ func canBeStr(v *parser.VueElement) bool {
 		v.PropClass == nil &&
 		v.PropStyle == nil &&
 		v.VBind == nil &&
+		v.VHtml == "" &&
+		v.VText == "" &&
 		len(v.Directives) == 0
 }
 
@@ -1046,17 +1057,44 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 						VBind:       vbind,
 					},
 				})
-				// 子集
-				for _, c := range v.Children {
-					s, slotsc, err := toStatement(c)
+
+				var childStatement Statement
+
+				if v.VHtml != "" {
+					node, err := compileJS(v.VHtml)
 					if err != nil {
 						return nil, nil, err
 					}
-					for k, v := range slotsc {
-						slots[k] = v
+					childStatement = &RawHtmlStatement{
+						exp: &JsExpression{node: node, code: v.VHtml},
 					}
-					sg.Append(s)
+				} else if v.VText != "" {
+					node, err := compileJS(v.VText)
+					if err != nil {
+						return nil, nil, err
+					}
+					childStatement = &MustacheStatement{
+						exp: &JsExpression{node: node, code: v.VText},
+					}
+				} else {
+					// 子集 作为default slot
+					var childStatementG GroupStatement
+					for _, c := range v.Children {
+						s, slotsc, err := toStatement(c)
+						if err != nil {
+							return nil, nil, err
+						}
+						for k, v := range slotsc {
+							slots[k] = v
+						}
+						childStatementG.Append(s)
+					}
+
+					childStatement = childStatementG.Finish()
 				}
+
+				// 子集
+				sg.Append(childStatement)
 
 				sg.Append(&StrStatement{str: fmt.Sprintf("</%s>", v.Tag)})
 			}
@@ -1078,25 +1116,46 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				return nil, nil, err
 			}
 
-			// 子集 作为default slot
-			var childStatement GroupStatement
-			for _, c := range v.Children {
-				s, slotsc, err := toStatement(c)
+			var childStatement Statement
+
+			if v.VHtml != "" {
+				node, err := compileJS(v.VHtml)
 				if err != nil {
 					return nil, nil, err
 				}
-				for k, v := range slotsc {
-					slots[k] = v
+				childStatement = &RawHtmlStatement{
+					exp: &JsExpression{node: node, code: v.VHtml},
 				}
-				childStatement.Append(s)
+			} else if v.VText != "" {
+				node, err := compileJS(v.VText)
+				if err != nil {
+					return nil, nil, err
+				}
+				childStatement = &MustacheStatement{
+					exp: &JsExpression{node: node, code: v.VText},
+				}
+			} else {
+				// 子集 作为default slot
+				var childStatementG GroupStatement
+				for _, c := range v.Children {
+					s, slotsc, err := toStatement(c)
+					if err != nil {
+						return nil, nil, err
+					}
+					for k, v := range slotsc {
+						slots[k] = v
+					}
+					childStatementG.Append(s)
+				}
+
+				childStatement = childStatementG.Finish()
 			}
 
-			defaultSlotStatement := childStatement.Finish()
-			if defaultSlotStatement != nil {
+			if childStatement != nil {
 				slots["default"] = &VSlotStruct{
 					name:     "default",
 					propsKey: "",
-					children: defaultSlotStatement,
+					children: childStatement,
 				}
 			}
 
@@ -1227,7 +1286,7 @@ func parseBeard(txt string) (Statement, error) {
 						if err != nil {
 							return nil, err
 						}
-						sg.Append(&ExpressionStatement{
+						sg.Append(&MustacheStatement{
 							exp: &JsExpression{node: node, code: code},
 						})
 					}
@@ -1281,7 +1340,9 @@ func NicePrintStatement(st Statement, lev int) string {
 	case *ForStatement:
 		s += fmt.Sprintf("For(%s in %s)\n", t.ItemKey, t.ArrayKey)
 		s += fmt.Sprintf("%s", NicePrintStatement(t.ChildChunks, lev+1))
-	case *ExpressionStatement:
+	case *MustacheStatement:
+		s += fmt.Sprintf("{{%s}}\n", t.exp)
+	case *RawHtmlStatement:
 		s += fmt.Sprintf("{{%s}}\n", t.exp)
 	default:
 
