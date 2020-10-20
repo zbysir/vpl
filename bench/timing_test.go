@@ -66,7 +66,7 @@ func benchmarkVpl(b *testing.B, rowsCount int) {
 	var ii interface{}
 	bs, _ := json.Marshal(rows)
 	json.Unmarshal(bs, &ii)
-	props := compiler.NewPropsR()
+	props := compiler.NewProps()
 	props.AppendMap(map[string]interface{}{
 		"rows": ii,
 	})
@@ -78,7 +78,7 @@ func benchmarkVpl(b *testing.B, rowsCount int) {
 			_, err := vue.RenderComponent("main", &vpl.RenderParam{
 				Global: nil,
 				Ctx:    context.Background(),
-				PropsR: props,
+				Props:  props,
 			})
 			if err != nil {
 				b.Fatal(err)

@@ -81,27 +81,27 @@ type PropR struct {
 	Val interface{}
 }
 
-type PropsR struct {
+type Props struct {
 	orderKey []string          // 在生成attr时会用到顺序
 	data     map[string]*PropR // 存储map有利于快速取值
 }
 
-func NewPropsR() *PropsR {
-	return &PropsR{
+func NewProps() *Props {
+	return &Props{
 		// 减少扩展slice的cpu消耗
 		orderKey: make([]string, 0, 0),
 		data:     map[string]*PropR{},
 	}
 }
 
-func (r *PropsR) ForEach(cb func(index int, r *PropR)) {
+func (r *Props) ForEach(cb func(index int, r *PropR)) {
 	for index, k := range r.orderKey {
 		cb(index, r.data[k])
 	}
 	return
 }
 
-func (r *PropsR) ToMap() map[string]interface{} {
+func (r *Props) ToMap() map[string]interface{} {
 	if r == nil {
 		return nil
 	}
@@ -112,7 +112,7 @@ func (r *PropsR) ToMap() map[string]interface{} {
 	return m
 }
 
-func (r *PropsR) Append(k string, v interface{}) {
+func (r *Props) Append(k string, v interface{}) {
 	o, exist := r.data[k]
 	if exist {
 		o.Val = v
@@ -127,7 +127,7 @@ func (r *PropsR) Append(k string, v interface{}) {
 }
 
 // 无序添加多个props
-func (r *PropsR) AppendMap(mp map[string]interface{}) {
+func (r *Props) AppendMap(mp map[string]interface{}) {
 	keys := util.GetSortedKey(mp)
 
 	for _, k := range keys {
@@ -137,7 +137,7 @@ func (r *PropsR) AppendMap(mp map[string]interface{}) {
 }
 
 // 有序添加多个props
-func (r *PropsR) appendProps(ps *PropsR) {
+func (r *Props) appendProps(ps *Props) {
 	if ps == nil {
 		return
 	}
@@ -146,7 +146,7 @@ func (r *PropsR) appendProps(ps *PropsR) {
 	})
 }
 
-func (r *PropsR) Get(key string) (*PropR, bool) {
+func (r *Props) Get(key string) (*PropR, bool) {
 	v, exist := r.data[key]
 	return v, exist
 }
@@ -209,11 +209,11 @@ func compileVBind(v *parser.VBind) (*VBindC, error) {
 type PropsC []*PropC
 
 // 执行编译之后的PropsC, 返回数值PropsR.
-func (r PropsC) exec(scope *Scope) *PropsR {
+func (r PropsC) exec(scope *Scope) *Props {
 	if len(r) == 0 {
 		return nil
 	}
-	pr := NewPropsR()
+	pr := NewProps()
 	for _, p := range r {
 		pr.Append(p.Key, p.exec(scope).Val)
 	}
@@ -281,16 +281,16 @@ type VBindC struct {
 	Val Expression
 }
 
-func (v *VBindC) Exec(s *Scope) *PropsR {
+func (v *VBindC) Exec(s *Scope) *Props {
 	if v == nil {
 		return nil
 	}
-	pr := NewPropsR()
+	pr := NewProps()
 	b := v.Val.Exec(s)
 	switch t := b.(type) {
 	case map[string]interface{}:
 		pr.AppendMap(t)
-	case *PropsR:
+	case *Props:
 		return t
 	}
 
@@ -428,7 +428,7 @@ func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 	// 处理attr
 	// 计算Props
-	propsR := NewPropsR()
+	propsR := NewProps()
 	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
 	if t.tagStruct.VBind != nil {
 		propsR.appendProps(t.tagStruct.VBind.Exec(o.Scope))
@@ -650,7 +650,7 @@ type ComponentStatement struct {
 // 处理slot作用域
 func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	// 计算Props
-	propsR := NewPropsR()
+	propsR := NewProps()
 	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
 	if c.ComponentStruct.VBind != nil {
 		propsR.appendProps(c.ComponentStruct.VBind.Exec(o.Scope))
@@ -733,7 +733,7 @@ type VSlotStatementR struct {
 
 type ExecSlotOptions struct {
 	// 如果在渲染Slot组件, 则需要传递slot props.
-	SlotProps *PropsR
+	SlotProps *Props
 }
 
 func (s *VSlotStatementR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
@@ -821,7 +821,7 @@ type StatementOptions struct {
 	// 如<Menu :data="data">
 	//   <slot name="default">
 	// 非组件时不使用
-	Props     *PropsR
+	Props     *Props
 	PropClass *PropR
 	PropStyle *PropR
 

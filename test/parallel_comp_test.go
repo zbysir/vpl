@@ -77,7 +77,7 @@ func TestParallel(t *testing.T) {
 
 			t.Logf("run....")
 
-			props := compiler.NewPropsR()
+			props := compiler.NewProps()
 			props.AppendMap(map[string]interface{}{
 				"sleep": func(r *vpl.Vpl, args ...interface{}) interface{} {
 					ti := interfaceToFloat(args[0])
@@ -91,13 +91,13 @@ func TestParallel(t *testing.T) {
 				html, err = vue.RenderComponent(c.IndexComponent, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
-					PropsR: props,
+					Props:  props,
 				})
 			} else {
 				html, err = vue.RenderTpl(c.IndexTpl, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
-					PropsR: props,
+					Props:  props,
 				})
 			}
 

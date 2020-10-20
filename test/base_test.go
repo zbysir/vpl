@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
-	"github.com/zbysir/vpl/internal/compiler"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -204,7 +203,7 @@ author: {{author}}
 
 			t.Logf("run....")
 
-			props := compiler.NewPropsR()
+			props := vpl.NewProps()
 			props.AppendMap(map[string]interface{}{
 				"id":      "helloID",
 				"ulClass": "uuu",
@@ -229,13 +228,13 @@ author: {{author}}
 				html, err = vue.RenderComponent(c.IndexComponent, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
-					PropsR: props,
+					Props:  props,
 				})
 			} else {
 				html, err = vue.RenderTpl(c.IndexTpl, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
-					PropsR: props,
+					Props:  props,
 				})
 			}
 
@@ -314,7 +313,7 @@ func TestClassStyle(t *testing.T) {
 
 			t.Logf("run....")
 
-			props := compiler.NewPropsR()
+			props := vpl.NewProps()
 			props.AppendMap(map[string]interface{}{
 				"css":   []interface{}{"b", "c"},
 				"color": "red",
@@ -325,7 +324,7 @@ func TestClassStyle(t *testing.T) {
 			html, err = vue.RenderComponent(c.IndexComponent, &vpl.RenderParam{
 				Global: nil,
 				Ctx:    context.Background(),
-				PropsR: props,
+				Props:  props,
 			})
 
 			if err != nil {
@@ -384,7 +383,7 @@ func BenchmarkRender(b *testing.B) {
 	bs, _ := json.Marshal(d)
 	json.Unmarshal(bs, &ii)
 
-	props := compiler.NewPropsR()
+	props := vpl.NewProps()
 	props.AppendMap(map[string]interface{}{
 		"data": ii,
 	})
@@ -393,7 +392,7 @@ func BenchmarkRender(b *testing.B) {
 		_, err := vue.RenderComponent("main", &vpl.RenderParam{
 			Global: nil,
 			Ctx:    context.Background(),
-			PropsR: props,
+			Props:  props,
 		})
 		if err != nil {
 			b.Fatal(err)

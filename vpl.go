@@ -174,10 +174,10 @@ func (v *Vpl) NewScope() *compiler.Scope {
 
 type RenderParam struct {
 	// 本次渲染的全局变量, 在所有组件中都有效
-	Global *compiler.Scope
+	Global map[string]interface{}
 
-	Ctx    context.Context
-	PropsR *compiler.PropsR
+	Ctx   context.Context
+	Props *compiler.Props
 }
 
 // tpl e.g.: <main v-bind="$props"></main>
@@ -193,7 +193,7 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 	global.Parent = v.prototype
 
 	if p.Global != nil {
-		global = global.Extend(p.Global.Value)
+		global = global.Extend(p.Global)
 	}
 	ctx := &compiler.StatementCtx{
 		Global:     global,
@@ -202,7 +202,7 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 		Components: v.components,
 	}
 
-	propsMap := p.PropsR.ToMap()
+	propsMap := p.Props.ToMap()
 	// 将所有props放入scope
 	scope := ctx.NewScope().Extend(propsMap)
 	// copyMap是为了让$props和scope的value不相等, 否则在打印$props就会出现循环引用.
@@ -210,7 +210,7 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 
 	err = statement.Exec(ctx, &compiler.StatementOptions{
 		Slots:     nil,
-		Props:     p.PropsR,
+		Props:     p.Props,
 		PropClass: nil,
 		PropStyle: nil,
 		Scope:     scope,
@@ -234,7 +234,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 			PropClass: nil,
 			PropStyle: nil,
 			// 将所有Props传递到组件中
-			VBind:      &compiler.VBindC{Val: compiler.NewRawExpression(p.PropsR)},
+			VBind:      &compiler.VBindC{Val: compiler.NewRawExpression(p.Props)},
 			Directives: nil,
 			Slots:      nil,
 		},
@@ -245,7 +245,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 	global := v.NewScope()
 
 	if p.Global != nil {
-		global = global.Extend(p.Global.Value)
+		global = global.Extend(p.Global)
 	}
 	ctx := &compiler.StatementCtx{
 		Global:     global,
@@ -322,4 +322,8 @@ func (s *StringSpan) Result() string {
 
 func NewListWriter() *ListWriter {
 	return &ListWriter{}
+}
+
+func NewProps() *compiler.Props {
+	return compiler.NewProps()
 }

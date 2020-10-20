@@ -66,7 +66,7 @@ func TestFunc(t *testing.T) {
 
 			t.Logf("run....")
 
-			props := compiler.NewPropsR()
+			props := compiler.NewProps()
 			props.AppendMap(map[string]interface{}{
 				"appendName": compiler.Function(func(args ...interface{}) interface{} {
 					return fmt.Sprintf("%s|%s", args[0], args[1])
@@ -78,13 +78,13 @@ func TestFunc(t *testing.T) {
 				html, err = vue.RenderComponent(c.IndexComponent, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
-					PropsR: props,
+					Props:  props,
 				})
 			} else {
 				html, err = vue.RenderTpl(c.IndexTpl, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
-					PropsR: props,
+					Props:  props,
 				})
 			}
 
