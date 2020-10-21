@@ -1,4 +1,4 @@
-package compiler
+package js
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-func compileJS(code string) (node ast.Node, err error) {
+func CompileJS(code string) (node ast.Node, err error) {
 	// 用括号包裹的原因是让"{x: 1}"这样的语法解析成对象, 而不是label
 	code = "(" + code + ")"
 	p, err := parser.ParseFile(nil, "", code, 0)
@@ -22,24 +22,28 @@ func compileJS(code string) (node ast.Node, err error) {
 	return p.Body[0], nil
 }
 
-func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
+type DataMapper interface {
+	Get(k string) interface{}
+}
+
+func RunJsExpression(node ast.Node, scope DataMapper) (r interface{}, err error) {
 	switch t := node.(type) {
 	case *ast.ExpressionStatement:
-		return runJsExpression(t.Expression, scope)
+		return RunJsExpression(t.Expression, scope)
 	case *ast.Identifier:
 		return scope.Get(t.Name), nil
 	case *ast.DotExpression:
 		// a.b
-		left, err := runJsExpression(t.Left, scope)
+		left, err := RunJsExpression(t.Left, scope)
 		if err != nil {
 			return nil, err
 		}
 
-		r, _, _ := shouldLookInterface(left, t.Identifier.Name)
+		r, _, _ := ShouldLookInterface(left, t.Identifier.Name)
 		return r, nil
 	case *ast.BracketExpression:
 		// a[b]
-		left, err := runJsExpression(t.Left, scope)
+		left, err := RunJsExpression(t.Left, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +55,7 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 			key = m.Value
 		default:
 			// a[b+c]
-			v, err := runJsExpression(t.Member, scope)
+			v, err := RunJsExpression(t.Member, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -59,7 +63,7 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 			key = interfaceToStr(v)
 		}
 
-		r, _, _ := shouldLookInterface(left, key)
+		r, _, _ := ShouldLookInterface(left, key)
 		return r, nil
 	case *ast.StringLiteral:
 		return t.Value, nil
@@ -70,11 +74,11 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 	case *ast.NullLiteral:
 		return nil, nil
 	case *ast.BinaryExpression:
-		left, err := runJsExpression(t.Left, scope)
+		left, err := RunJsExpression(t.Left, scope)
 		if err != nil {
 			return nil, err
 		}
-		right, err := runJsExpression(t.Right, scope)
+		right, err := RunJsExpression(t.Right, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +113,7 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 		// 一元运算符
 		// -1
 		// !b
-		arg, err := runJsExpression(t.Operand, scope)
+		arg, err := RunJsExpression(t.Operand, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +143,7 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 				panic(fmt.Sprintf("bad Value kind of ObjectLiteral: %v", v.Kind))
 			}
 
-			val, err := runJsExpression(v.Value, scope)
+			val, err := RunJsExpression(v.Value, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -148,14 +152,14 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 		return mp, nil
 	case *ast.CallExpression:
 		// fun(1,2,3, ...)
-		funcName, err := runJsExpression(t.Callee, scope)
+		funcName, err := RunJsExpression(t.Callee, scope)
 		if err != nil {
 			return nil, err
 		}
 
 		args := make([]interface{}, len(t.ArgumentList))
 		for i, v := range t.ArgumentList {
-			args[i], err = runJsExpression(v, scope)
+			args[i], err = RunJsExpression(v, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -164,7 +168,7 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 	case *ast.ArrayLiteral:
 		args := make([]interface{}, len(t.Value))
 		for i, v := range t.Value {
-			args[i], err = runJsExpression(v, scope)
+			args[i], err = RunJsExpression(v, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -172,15 +176,15 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 		return args, nil
 	case *ast.ConditionalExpression:
 		// 三元运算
-		consequent, err := runJsExpression(t.Consequent, scope)
+		consequent, err := RunJsExpression(t.Consequent, scope)
 		if err != nil {
 			return nil, err
 		}
-		alternate, err := runJsExpression(t.Alternate, scope)
+		alternate, err := RunJsExpression(t.Alternate, scope)
 		if err != nil {
 			return nil, err
 		}
-		test, err := runJsExpression(t.Test, scope)
+		test, err := RunJsExpression(t.Test, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -192,56 +196,12 @@ func runJsExpression(node ast.Node, scope *Scope) (r interface{}, err error) {
 		}
 
 	default:
-		panic(fmt.Sprintf("bad type %T for runJsExpression", t))
+		panic(fmt.Sprintf("bad type %T for RunJsExpression", t))
 		//bs, _ := json.Marshal(t)
 		//log.Panicf("%s", bs)
 	}
 	return
 }
-
-// 读取值
-// 将a.b.c解析成 root 和keys
-// 如a.b.c解析成 root: this, keys: [a ,b ,c]
-// 如"a".length解析成 root: "a", keys: [length]
-//func lookExpress(e ast.Expression, scopeKey string) (root string, keys []string) {
-//	switch r := e.(type) {
-//	case *ast.DotExpression:
-//		// a.b 中的b
-//		currKey := fmt.Sprintf(`"%s"`, r.Identifier.Name)
-//		root, keys = lookExpress(r.Left, scopeKey)
-//		keys = append(keys, currKey)
-//	case *ast.Identifier:
-//		// a.b 中的a
-//		// 使用scopeKey读取变量
-//		root = scopeKey
-//		keys = []string{fmt.Sprintf(`"%s"`, r.Name)}
-//	case *ast.ObjectLiteral:
-//		// {"a": 1}["a"]
-//		root = genGoCodeByNode(r, scopeKey)
-//	case *ast.BinaryExpression:
-//		root = genGoCodeByNode(r, scopeKey)
-//	case *ast.BracketExpression:
-//		var currKey string
-//		switch m := r.Member.(type) {
-//		case *ast.StringLiteral:
-//			// a['b']
-//			// 也可以走default语句, 但这是fastPath, 可以少调用interfaceToStr函数
-//			currKey = fmt.Sprintf(`"%s"`, m.Value)
-//		default:
-//			// a[b]
-//			// a[a+1]
-//			// ... 各种表达式
-//			currKey = fmt.Sprintf(`interfaceToStr(%s)`, genGoCodeByNode(r.Member, scopeKey))
-//		}
-//
-//		root, keys = lookExpress(r.Left, scopeKey)
-//		keys = append(keys, currKey)
-//	default:
-//		panic(fmt.Sprintf("bad type for lookExpress: %T, %s", r, r))
-//	}
-//
-//	return
-//}
 
 func isNumber(s interface{}) (d float64, is bool) {
 	if s == nil {
@@ -279,7 +239,7 @@ func interfaceAdd(a, b interface{}) interface{} {
 	return an + bn
 }
 
-func interfaceToStr(s interface{}, escaped ...bool) (d string) {
+func interfaceToStr(s interface{}) (d string) {
 	switch a := s.(type) {
 	case string:
 		d = a
@@ -296,9 +256,6 @@ func interfaceToStr(s interface{}, escaped ...bool) (d string) {
 		d = string(bs)
 	}
 
-	if len(escaped) == 1 && escaped[0] {
-		d = escape(d)
-	}
 	return
 }
 
@@ -404,16 +361,15 @@ func interfaceToFunc(s interface{}) (d Function) {
 
 type Function func(args ...interface{}) interface{}
 
-func emptyFunc( args ...interface{}) interface{} {
+func emptyFunc(args ...interface{}) interface{} {
 	if len(args) != 0 {
 		return args[0]
 	}
 	return nil
 }
 
-
 // shouldLookInterface会返回interface(map[string]interface{})中指定的keys路径的值
-func shouldLookInterface(data interface{}, keys ...string) (desc interface{}, rootExist bool, exist bool) {
+func ShouldLookInterface(data interface{}, keys ...string) (desc interface{}, rootExist bool, exist bool) {
 	if len(keys) == 0 {
 		return data, true, true
 	}
@@ -428,7 +384,7 @@ func shouldLookInterface(data interface{}, keys ...string) (desc interface{}, ro
 			return
 		}
 		rootExist = true
-		desc, _, exist = shouldLookInterface(c, keys[1:]...)
+		desc, _, exist = ShouldLookInterface(c, keys[1:]...)
 		return
 
 	case []interface{}:
@@ -447,7 +403,7 @@ func shouldLookInterface(data interface{}, keys ...string) (desc interface{}, ro
 			if int(index) >= len(data) || index < 0 {
 				return
 			}
-			return shouldLookInterface(data[index], keys[1:]...)
+			return ShouldLookInterface(data[index], keys[1:]...)
 		}
 	case string:
 		switch currKey {

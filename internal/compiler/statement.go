@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/robertkrimen/otto/ast"
+	"github.com/zbysir/vpl/internal/js"
 	"github.com/zbysir/vpl/internal/lib/log"
 	"github.com/zbysir/vpl/internal/parser"
 	"github.com/zbysir/vpl/internal/util"
@@ -17,6 +18,10 @@ type Scope struct {
 	Value  map[string]interface{}
 }
 
+func (s *Scope) Get(k string) interface{} {
+	return s.GetDeep(k)
+}
+
 func NewScope() *Scope {
 	return &Scope{
 		Parent: nil,
@@ -26,13 +31,13 @@ func NewScope() *Scope {
 
 // 获取作用域中的变量
 // 会向上查找
-func (s *Scope) Get(k ...string) (v interface{}) {
+func (s *Scope) GetDeep(k ...string) (v interface{}) {
 	var rootExist bool
 	var ok bool
 
 	curr := s
 	for curr != nil {
-		v, rootExist, ok = shouldLookInterface(curr.Value, k...)
+		v, rootExist, ok = js.ShouldLookInterface(curr.Value, k...)
 		// 如果root存在, 则说明就应该读取当前作用域, 否则向上层作用域查找
 		if rootExist {
 			if !ok {
@@ -61,7 +66,7 @@ func (s *Scope) Set(k string, v interface{}) {
 	s.Value[k] = v
 }
 
-type Directive func(options *DirectivesCtx, binding *DirectivesBinding)
+type Directive func(nodeData *NodeData, binding *DirectivesBinding)
 
 type DirectivesBinding struct {
 	Value interface{}
@@ -176,7 +181,7 @@ func compileProp(p *parser.Prop) (*PropC, error) {
 		valExpression = &RawExpression{raw: p.Val}
 	} else {
 		if p.Val != "" {
-			node, err := compileJS(p.Val)
+			node, err := js.CompileJS(p.Val)
 			if err != nil {
 				return nil, fmt.Errorf("parseJs err: %w", err)
 			}
@@ -201,7 +206,7 @@ func compileVBind(v *parser.VBind) (*VBindC, error) {
 		return nil, nil
 	}
 
-	node, err := compileJS(v.Val)
+	node, err := js.CompileJS(v.Val)
 	if err != nil {
 		return nil, fmt.Errorf("parseJs err: %w", err)
 	}
@@ -216,7 +221,7 @@ func compileDirective(ds parser.Directives) (DirectivesC, error) {
 
 	pc := make(DirectivesC, len(ds))
 	for i, v := range ds {
-		node, err := compileJS(v.Value)
+		node, err := js.CompileJS(v.Value)
 		if err != nil {
 			return nil, fmt.Errorf("parseJs err: %w", err)
 		}
@@ -299,7 +304,7 @@ type ComponentStruct struct {
 	StaticClass parser.Class
 	StaticStyle parser.Styles
 
-	Directives parser.Directives
+	Directives DirectivesC
 	// 传递给这个组件的Slots
 	Slots Slots
 }
@@ -328,11 +333,6 @@ func (v *VBindC) Exec(s *Scope) *Props {
 	return pr
 }
 
-// 获取scope的值直到rootScope
-func getScopeMap(s *Scope, rootScope *Scope) map[string]interface{} {
-	return s.Value
-}
-
 type Expression interface {
 	Exec(ctx *Scope) interface{}
 }
@@ -342,7 +342,7 @@ type RawExpression struct {
 	raw interface{}
 }
 
-func (r *RawExpression) Exec(scope *Scope) interface{} {
+func (r *RawExpression) Exec(*Scope) interface{} {
 	return r.raw
 }
 
@@ -356,7 +356,7 @@ type JsExpression struct {
 }
 
 func (r *JsExpression) Exec(scope *Scope) interface{} {
-	v, err := runJsExpression(r.node, scope)
+	v, err := js.RunJsExpression(r.node, scope)
 	if err != nil {
 		log.Warningf("runJsExpression err:%v", err)
 		return err
@@ -372,7 +372,7 @@ func (r *JsExpression) String() string {
 type NullExpression struct {
 }
 
-func (r *NullExpression) Exec(scope *Scope) interface{} {
+func (r *NullExpression) Exec(*Scope) interface{} {
 	return nil
 }
 
@@ -405,7 +405,7 @@ type StrStatement struct {
 	Str string
 }
 
-func (s *StrStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (s *StrStatement) Exec(ctx *StatementCtx, _ *StatementOptions) error {
 	ctx.W.WriteString(s.Str)
 	return nil
 }
@@ -420,7 +420,7 @@ type TagStatement struct {
 	tagStruct TagStruct
 }
 
-func execDirectives(ds DirectivesC, ctx *StatementCtx, scope *Scope, o *DirectivesCtx) {
+func execDirectives(ds DirectivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
 	for _, v := range ds {
 		val := v.Value.Exec(scope)
 		ctx.Directives[v.Name](o, &DirectivesBinding{
@@ -431,14 +431,16 @@ func execDirectives(ds DirectivesC, ctx *StatementCtx, scope *Scope, o *Directiv
 	}
 }
 
-type DirectivesCtx struct {
-	Scope    *Scope
-	Props    *Props
-	Class    *parser.Class
-	Style    *parser.Styles
-	Children *Statement
-	W        Writer
-	Slots    *SlotsR
+type Class = parser.Class
+type Styles = parser.Styles
+
+type NodeData struct {
+	Scope *Scope // 向当前scope声明一个值
+	Props *Props // 给组件添加attr
+	Class *Class //
+	Style *Styles
+	W     Writer
+	Slots *SlotsR
 }
 
 func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
@@ -483,14 +485,13 @@ func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	// 执行指令
 	// 指令可以修改scope/props/style/class/children
 	if len(t.tagStruct.Directives) != 0 {
-		execDirectives(t.tagStruct.Directives, ctx, o.Scope, &DirectivesCtx{
-			Scope:    o.Scope,
-			Props:    props,
-			Class:    &cla,
-			Style:    &sty,
-			Children: nil,
-			W:        ctx.W,
-			Slots:    &slotsR,
+		execDirectives(t.tagStruct.Directives, ctx, o.Scope, &NodeData{
+			Scope: o.Scope,
+			Props: props,
+			Class: &cla,
+			Style: &sty,
+			W:     ctx.W,
+			Slots: &slotsR,
 		})
 	}
 
@@ -519,7 +520,7 @@ func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			case string:
 				attrs.WriteString(v)
 			default:
-				attrs.WriteString(interfaceToStr(v, true))
+				attrs.WriteString(util.InterfaceToStr(v, true))
 			}
 			attrs.WriteString(`"`)
 		}
@@ -549,20 +550,20 @@ func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 }
 
 // 支持的格式: map[string]interface{}
-func getStyleFromProps(styleProps interface{}) parser.Styles {
+func getStyleFromProps(styleProps interface{}) Styles {
 	if styleProps == nil {
-		return parser.Styles{}
+		return Styles{}
 	}
-	st := parser.Styles{}
+	st := Styles{}
 	switch t := styleProps.(type) {
 	case map[string]interface{}:
 		for k, v := range t {
 			switch v := v.(type) {
 			case string:
-				st.Add(k, escape(v))
+				st.Add(k, util.Escape(v))
 			default:
 				bs, _ := json.Marshal(v)
-				st.Add(k, escape(string(bs)))
+				st.Add(k, util.Escape(string(bs)))
 			}
 		}
 	}
@@ -586,7 +587,7 @@ type ElseStatement struct {
 
 func (i *IfStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.condition.Exec(o.Scope)
-	if interfaceToBool(r) {
+	if util.InterfaceToBool(r) {
 		err := i.ChildStatement.Exec(ctx, o)
 		if err != nil {
 			return err
@@ -602,7 +603,7 @@ func (i *IfStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 				}
 				break
 			}
-			if interfaceToBool(ef.condition.Exec(o.Scope)) {
+			if util.InterfaceToBool(ef.condition.Exec(o.Scope)) {
 				err := ef.ChildStatement.Exec(ctx, o)
 				if err != nil {
 					return err
@@ -761,6 +762,19 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 		return nil
 	}
 
+	// 执行指令
+	// 指令可以修改scope/props/style/class/children
+	if len(c.ComponentStruct.Directives) != 0 {
+		execDirectives(c.ComponentStruct.Directives, ctx, o.Scope, &NodeData{
+			Scope: o.Scope, // 执行组件指令的scope是声明组件时的scope
+			Props: propsR,
+			Class: &o.StaticClass,
+			Style: &o.StaticStyle,
+			W:     ctx.W,
+			Slots: &slots,
+		})
+	}
+
 	// 运行组件应该重新使用新的scope
 	// 和vue不同的是, props只有在子组件中申明才能在子组件中使用, 而vtpl不同, 它将所有props放置到变量域中.
 	props := propsR.ToMap()
@@ -793,14 +807,17 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 
 // 声明Slot的语句
 // v-slot:default="SlotProps"
-type VSlotStruct struct {
+type VSlot struct {
 	Name     string
 	propsKey string
 	Children Statement
 }
 
-type VSlotStatementR struct {
-	VSlot *VSlotStruct
+// Slot的运行时
+type SlotR struct {
+	Name     string
+	propsKey string
+	Children Statement
 
 	// 在运行时被赋值
 	ScopeWhenDeclaration *Scope
@@ -811,18 +828,18 @@ type ExecSlotOptions struct {
 	SlotProps *Props
 }
 
-func (s *VSlotStatementR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
+func (s *SlotR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
 	if s.ScopeWhenDeclaration == nil {
 		panic(fmt.Sprintf("VSlotStatment should call Slot.SetScope to set scope befor Exec"))
 	}
 	scope := s.ScopeWhenDeclaration
 	if o != nil && o.SlotProps != nil {
 		scope = scope.Extend(map[string]interface{}{
-			s.VSlot.propsKey: o.SlotProps.ToMap(),
+			s.propsKey: o.SlotProps.ToMap(),
 		})
 	}
 
-	return s.VSlot.Children.Exec(ctx, &StatementOptions{
+	return s.Children.Exec(ctx, &StatementOptions{
 		Scope: scope,
 	})
 }
@@ -836,7 +853,7 @@ type MustacheStatement struct {
 func (i *MustacheStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.exp.Exec(o.Scope)
 
-	ctx.W.WriteString(interfaceToStr(r, true))
+	ctx.W.WriteString(util.InterfaceToStr(r, true))
 	return nil
 }
 
@@ -849,13 +866,13 @@ type RawHtmlStatement struct {
 func (i *RawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.exp.Exec(o.Scope)
 
-	ctx.W.WriteString(interfaceToStr(r, false))
+	ctx.W.WriteString(util.InterfaceToStr(r, false))
 	return nil
 }
 
 // https://cn.vuejs.org/v2/guide/components-slots.html
 // Slots 存放传递给组件的所有Slot, vue语法: <h1 v-slot:default="xxx"></h1>
-type Slots map[string]*VSlotStruct
+type Slots map[string]*VSlot
 
 // WrapScope 设置在slot声明时的scope
 func (s Slots) WrapScope(o *Scope) (sr SlotsR) {
@@ -864,21 +881,23 @@ func (s Slots) WrapScope(o *Scope) (sr SlotsR) {
 	}
 	sr = SlotsR{}
 	for k, v := range s {
-		sr[k] = &VSlotStatementR{
-			VSlot:                v,
+		sr[k] = &SlotR{
+			Name:                 v.Name,
+			propsKey:             v.propsKey,
+			Children:             v.Children,
 			ScopeWhenDeclaration: o,
 		}
 	}
 	return
 }
 
-type SlotsR map[string]*VSlotStatementR
+type SlotsR map[string]*SlotR
 
-func (s SlotsR) Default() *VSlotStatementR {
+func (s SlotsR) Default() *SlotR {
 	return s.Get("default")
 }
 
-func (s SlotsR) Get(key string) *VSlotStatementR {
+func (s SlotsR) Get(key string) *SlotR {
 	if s == nil {
 		return nil
 	}
@@ -913,8 +932,8 @@ type StatementOptions struct {
 	PropClass *PropR
 	PropStyle *PropR
 
-	StaticClass parser.Class
-	StaticStyle parser.Style
+	StaticClass Class
+	StaticStyle Styles
 
 	// 如果是渲染tag, scope是当前组件的scope(如果在For语句中, 则也有For的scope).
 	// 如果渲染其他组件, scope也是当前组件的scope.
@@ -1023,7 +1042,7 @@ var htmlTag = map[string]struct{}{
 	"ul":     {},
 	"li":     {},
 	"span":   {},
-	"script":   {},
+	"script": {},
 	"link":   {},
 }
 
@@ -1137,7 +1156,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				var childStatement Statement
 
 				if v.VHtml != "" {
-					node, err := compileJS(v.VHtml)
+					node, err := js.CompileJS(v.VHtml)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -1145,7 +1164,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 						exp: &JsExpression{node: node, code: v.VHtml},
 					}
 				} else if v.VText != "" {
-					node, err := compileJS(v.VText)
+					node, err := js.CompileJS(v.VText)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -1169,7 +1188,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				}
 
 				// 子集 作为default slot
-				slot := map[string]*VSlotStruct{
+				slot := map[string]*VSlot{
 					"default": {
 						Name:     "default",
 						propsKey: "",
@@ -1212,7 +1231,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 			var childStatement Statement
 
 			if v.VHtml != "" {
-				node, err := compileJS(v.VHtml)
+				node, err := js.CompileJS(v.VHtml)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -1220,7 +1239,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					exp: &JsExpression{node: node, code: v.VHtml},
 				}
 			} else if v.VText != "" {
-				node, err := compileJS(v.VText)
+				node, err := js.CompileJS(v.VText)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -1245,7 +1264,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 			}
 
 			if childStatement != nil {
-				slots["default"] = &VSlotStruct{
+				slots["default"] = &VSlot{
 					Name:     "default",
 					propsKey: "",
 					Children: childStatement,
@@ -1257,6 +1276,12 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				return nil, nil, err
 			}
 
+			dir, err := compileDirective(v.Directives)
+			if err != nil {
+				return nil, nil, err
+
+			}
+
 			st = &ComponentStatement{
 				ComponentKey: v.Tag,
 				ComponentStruct: ComponentStruct{
@@ -1266,7 +1291,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					VBind:       vbind,
 					StaticClass: v.Class,
 					StaticStyle: v.Style,
-					Directives:  v.Directives,
+					Directives:  dir,
 					Slots:       slots,
 				},
 			}
@@ -1276,7 +1301,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		}
 
 		if v.VIf != nil {
-			ifCondition, err := compileJS(v.VIf.Condition)
+			ifCondition, err := js.CompileJS(v.VIf.Condition)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -1298,7 +1323,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				}
 
 				if f.Types == "elseif" && f.Condition != "" {
-					n, err := compileJS(f.Condition)
+					n, err := js.CompileJS(f.Condition)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -1318,7 +1343,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		}
 
 		if v.VFor != nil {
-			p, err := compileJS(v.VFor.ArrayKey)
+			p, err := js.CompileJS(v.VFor.ArrayKey)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -1333,7 +1358,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		}
 
 		if v.VSlot != nil {
-			slots[v.VSlot.SlotName] = &VSlotStruct{
+			slots[v.VSlot.SlotName] = &VSlot{
 				Name:     v.VSlot.SlotName,
 				propsKey: v.VSlot.PropsKey,
 				Children: st,
@@ -1356,7 +1381,6 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		return &StrStatement{Str: fmt.Sprintf("not case NodeType: %+v", v.NodeType)}, nil, nil
 	}
 
-	return nil, nil, nil
 }
 
 // 将胡子语法处理成多个语句
@@ -1375,7 +1399,7 @@ func parseBeard(txt string) (Statement, error) {
 				if len(sp) == 2 {
 					code := sp[0]
 					if len(code) != 0 {
-						node, err := compileJS(code)
+						node, err := js.CompileJS(code)
 						if err != nil {
 							return nil, err
 						}

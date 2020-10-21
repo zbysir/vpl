@@ -1,10 +1,12 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"reflect"
 	"sort"
+	"strconv"
 	"unsafe"
 )
 
@@ -65,12 +67,34 @@ func UnsafeBytesToStr(z []byte) string {
 	return *(*string)(unsafe.Pointer(&z))
 }
 
-func escape(src string) string {
+func InterfaceToStr(s interface{}, escaped ...bool) (d string) {
+	switch a := s.(type) {
+	case string:
+		d = a
+	case int:
+		d = strconv.FormatInt(int64(a), 10)
+	case int32:
+		d = strconv.FormatInt(int64(a), 10)
+	case int64:
+		d = strconv.FormatInt(a, 10)
+	case float64:
+		d = strconv.FormatFloat(a, 'f', 10, 64)
+	default:
+		bs, _ := json.Marshal(a)
+		d = string(bs)
+	}
+
+	if len(escaped) == 1 && escaped[0] {
+		d = Escape(d)
+	}
+	return
+}
+func Escape(src string) string {
 	return html.EscapeString(src)
 }
 
 // 字符串false,0 会被认定为false
-func interfaceToBool(s interface{}) (d bool) {
+func InterfaceToBool(s interface{}) (d bool) {
 	if s == nil {
 		return false
 	}

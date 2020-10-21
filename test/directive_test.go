@@ -35,14 +35,22 @@ func TestDirective(t *testing.T) {
 				Txt: `
 <body>
 <div v-animate="{iteration: 20, duration: 20}">
-	Text
+	v-animate
 </div>
 <div style="top: 10px" v-style-important="{color: color}">
-	Text
+	v-style-important
 </div>
 <script v-js-set:$color="color">
-	Text
+	v-js-set
 </script>
+
+<div v-show="show" style="top: 10px">
+	v-show
+</div>
+
+<div v-let:testData="'hello'">
+	v-let:{{testData}}
+</div>
 
 
 </body>
@@ -58,6 +66,14 @@ func TestDirective(t *testing.T) {
 					return errors.New("自定义指令v-style-important执行有误")
 				}
 
+				if !strings.Contains(html, `display: none; top: 10px;`) {
+					return errors.New("自定义指令v-show执行有误")
+				}
+
+				if !strings.Contains(html, `v-let:hello`) {
+					return errors.New("自定义指令v-let执行有误")
+				}
+
 				return nil
 			},
 		},
@@ -65,7 +81,7 @@ func TestDirective(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			vue := vpl.New()
+			v := vpl.New()
 			t.Logf("compile....")
 
 			type Animate struct {
@@ -75,37 +91,44 @@ func TestDirective(t *testing.T) {
 				Delay     float64 `json:"delay"`
 				Duration  float64 `json:"duration"`
 			}
-			vue.Directive("v-animate", func(ctx *compiler.DirectivesCtx, binding *compiler.DirectivesBinding) {
+			v.Directive("v-animate", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
 				var a Animate
 				Copy(binding.Value, &a)
 
-				ctx.Props.Append("data-wow-iteration", fmt.Sprintf("%v", a.Iteration))
-				ctx.Props.Append("data-wow-delay", fmt.Sprintf("%0.2fs", a.Delay))
-				ctx.Props.Append("data-wow-duration", fmt.Sprintf("%0.2fs", a.Duration))
+				nodeData.Props.Append("data-wow-iteration", fmt.Sprintf("%v", a.Iteration))
+				nodeData.Props.Append("data-wow-delay", fmt.Sprintf("%0.2fs", a.Delay))
+				nodeData.Props.Append("data-wow-duration", fmt.Sprintf("%0.2fs", a.Duration))
 			})
 
-			vue.Directive("v-style-important", func(ctx *compiler.DirectivesCtx, binding *compiler.DirectivesBinding) {
+			v.Directive("v-style-important", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
 				m := binding.Value.(map[string]interface{})
 
 				for k, v := range m {
-					ctx.Style.Add(k, v.(string)+" !important")
+					nodeData.Style.Add(k, v.(string)+" !important")
 				}
 			})
 
-			vue.Directive("v-js-set", func(ctx *compiler.DirectivesCtx, binding *compiler.DirectivesBinding) {
+			v.Directive("v-show", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+				if binding.Value == false {
+					nodeData.Style.Add("display", "none")
+				}
+			})
+			v.Directive("v-let", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+				nodeData.Scope.Set(binding.Arg, binding.Value)
+			})
+
+			v.Directive("v-js-set", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
 				bs, _ := json.Marshal(binding.Value)
 
-				(*ctx.Slots)["default"] = &compiler.VSlotStatementR{
-					VSlot: &compiler.VSlotStruct{
-						Name:     "",
-						Children: &compiler.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
-					},
+				(*nodeData.Slots)["default"] = &compiler.SlotR{
+					Name:                 "",
+					Children:             &compiler.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
 					ScopeWhenDeclaration: &compiler.Scope{},
 				}
 			})
 
 			for _, tp := range c.Tpl {
-				err := vue.ComponentTxt(tp.Name, tp.Txt)
+				err := v.ComponentTxt(tp.Name, tp.Txt)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -117,11 +140,12 @@ func TestDirective(t *testing.T) {
 			props.AppendMap(map[string]interface{}{
 				"css":   []interface{}{"b", "c"},
 				"color": "red",
+				"show":  false,
 			})
 			var html string
 			var err error
 
-			html, err = vue.RenderComponent(c.IndexComponent, &vpl.RenderParam{
+			html, err = v.RenderComponent(c.IndexComponent, &vpl.RenderParam{
 				Global: nil,
 				Ctx:    context.Background(),
 				Props:  props,

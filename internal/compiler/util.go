@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"github.com/zbysir/vpl/internal/parser"
+	"github.com/zbysir/vpl/internal/util"
 	"sort"
 )
 
@@ -57,7 +58,7 @@ func GetClassFromProps(classProps interface{}) parser.Class {
 	case map[string]interface{}:
 		var c []string
 		for k, v := range t {
-			if interfaceToBool(v) {
+			if util.InterfaceToBool(v) {
 				c = append(c, k)
 			}
 		}
@@ -74,7 +75,7 @@ func GetClassFromProps(classProps interface{}) parser.Class {
 	}
 
 	for i := range cs {
-		cs[i] = escape(cs[i])
+		cs[i] = util.Escape(cs[i])
 	}
 
 	return cs

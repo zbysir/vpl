@@ -1,9 +1,10 @@
-package compiler
+package js
 
 import (
 	"fmt"
-	"github.com/zbysir/vpl/internal/lib/log"
 	"github.com/robertkrimen/otto/parser"
+	"github.com/zbysir/vpl/internal/compiler"
+	"github.com/zbysir/vpl/internal/lib/log"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func TestRunJs(t *testing.T) {
 		{Code: "concat(1,2)", Value: "12"},
 	}
 
-	scope := &Scope{
+	scope := &compiler.Scope{
 		Parent: nil,
 		Value: map[string]interface{}{
 			"a": 1,
@@ -56,9 +57,9 @@ func TestRunJs(t *testing.T) {
 			log.Warning(err)
 			t.Fatal(err)
 		}
-		v, err := runJsExpression(p.Body[0], scope)
+		v, err := RunJsExpression(p.Body[0], scope)
 		if err != nil {
-			log.Warningf("runJsExpression err:%v", err)
+			log.Warningf("RunJsExpression err:%v", err)
 			t.Fatal(err)
 		}
 
