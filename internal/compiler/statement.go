@@ -61,7 +61,7 @@ func (s *Scope) Set(k string, v interface{}) {
 	s.Value[k] = v
 }
 
-type Directive func(ctx *StatementCtx, options *StatementOptions, binding *DirectivesBinding)
+type Directive func(options *DirectivesCtx, binding *DirectivesBinding)
 
 type DirectivesBinding struct {
 	Value interface{}
@@ -402,28 +402,28 @@ type Span interface {
 
 // 静态字符串块
 type StrStatement struct {
-	str string
+	Str string
 }
 
 func (s *StrStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	ctx.W.WriteString(s.str)
+	ctx.W.WriteString(s.Str)
 	return nil
 }
 
 func (s *StrStatement) AppendStr(str string) {
-	s.str += str
+	s.Str += str
 }
 
 // tag开始块
-type TagStartStatement struct {
+type TagStatement struct {
 	tag       string
 	tagStruct TagStruct
 }
 
-func execDirectives(ds DirectivesC, ctx *StatementCtx, o *StatementOptions) {
+func execDirectives(ds DirectivesC, ctx *StatementCtx, scope *Scope, o *DirectivesCtx) {
 	for _, v := range ds {
-		val := v.Value.Exec(o.Scope)
-		ctx.Directives[v.Name](ctx, o, &DirectivesBinding{
+		val := v.Value.Exec(scope)
+		ctx.Directives[v.Name](o, &DirectivesBinding{
 			Value: val,
 			Arg:   v.Arg,
 			Name:  v.Name,
@@ -431,13 +431,17 @@ func execDirectives(ds DirectivesC, ctx *StatementCtx, o *StatementOptions) {
 	}
 }
 
-func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	// 执行指令
-	// TODO 指令有可能会修改tagStruct
-	if len(t.tagStruct.Directives) != 0 {
-		execDirectives(t.tagStruct.Directives, ctx, o)
-	}
+type DirectivesCtx struct {
+	Scope    *Scope
+	Props    *Props
+	Class    *parser.Class
+	Style    *parser.Styles
+	Children *Statement
+	W        Writer
+	Slots    *SlotsR
+}
 
+func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	// 将tagStruct根据scope变量渲染出属性
 	var attrs strings.Builder
 
@@ -449,9 +453,6 @@ func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	if t.tagStruct.PropClass != nil {
 		claProp := GetClassFromProps(t.tagStruct.PropClass.exec(o.Scope).Val)
 		cla.Merge(claProp)
-	}
-	if len(cla) != 0 {
-		attrs.WriteString(cla.ToAttr())
 	}
 
 	// 处理style
@@ -465,6 +466,39 @@ func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			sty.Merge(styProp)
 		}
 	}
+	// 处理attr
+	// 计算Props
+	props := NewProps()
+	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
+	if t.tagStruct.VBind != nil {
+		props.appendProps(t.tagStruct.VBind.Exec(o.Scope))
+	}
+
+	if len(t.tagStruct.Props) != 0 {
+		props.appendProps(t.tagStruct.Props.exec(o.Scope))
+	}
+
+	slotsR := t.tagStruct.Slots.WrapScope(o.Scope)
+
+	// 执行指令
+	// 指令可以修改scope/props/style/class/children
+	if len(t.tagStruct.Directives) != 0 {
+		execDirectives(t.tagStruct.Directives, ctx, o.Scope, &DirectivesCtx{
+			Scope:    o.Scope,
+			Props:    props,
+			Class:    &cla,
+			Style:    &sty,
+			Children: nil,
+			W:        ctx.W,
+			Slots:    &slotsR,
+		})
+	}
+
+	// 生成 attrs
+	if len(cla) != 0 {
+		attrs.WriteString(cla.ToAttr())
+	}
+
 	if len(sty) != 0 {
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
@@ -472,18 +506,7 @@ func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		attrs.WriteString(sty.ToAttr())
 	}
 
-	// 处理attr
-	// 计算Props
-	propsR := NewProps()
-	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
-	if t.tagStruct.VBind != nil {
-		propsR.appendProps(t.tagStruct.VBind.Exec(o.Scope))
-	}
-
-	if len(t.tagStruct.Props) != 0 {
-		propsR.appendProps(t.tagStruct.Props.exec(o.Scope))
-	}
-	propsR.ForEach(func(index int, p *PropR) {
+	props.ForEach(func(index int, p *PropR) {
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
 		}
@@ -502,15 +525,26 @@ func (t *TagStartStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		}
 	})
 
-	tag := "<" + t.tag
+	tagStart := "<" + t.tag
 
 	if attrs.Len() != 0 {
-		tag += " " + attrs.String()
+		tagStart += " " + attrs.String()
 	}
 
-	tag += ">"
+	tagStart += ">"
 
-	ctx.W.WriteString(tag)
+	ctx.W.WriteString(tagStart)
+
+	// 子节点
+	children := slotsR.Get("default")
+	if children != nil {
+		err := children.ExecSlot(ctx, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	ctx.W.WriteString("</" + t.tag + ">")
 	return nil
 }
 
@@ -617,7 +651,7 @@ type GroupStatement struct {
 // 调用GroupStatement.Append之后还必须调用Finish才能保证GroupStatement中的数据是正确的
 func (g *GroupStatement) Finish() Statement {
 	if g.strBuffer.Len() != 0 {
-		g.s = append(g.s, &StrStatement{str: g.strBuffer.String()})
+		g.s = append(g.s, &StrStatement{Str: g.strBuffer.String()})
 		g.strBuffer.Reset()
 	}
 
@@ -665,14 +699,14 @@ func (g *GroupStatement) Append(st Statement) {
 	}
 	switch appT := st.(type) {
 	case *StrStatement:
-		g.strBuffer.WriteString(appT.str)
+		g.strBuffer.WriteString(appT.Str)
 	case *GroupStatement:
 		for _, v := range appT.s {
 			g.Append(v)
 		}
 	default:
 		if g.strBuffer.Len() != 0 {
-			g.s = append(g.s, &StrStatement{str: g.strBuffer.String()})
+			g.s = append(g.s, &StrStatement{Str: g.strBuffer.String()})
 			g.strBuffer.Reset()
 		}
 		g.s = append(g.s, st)
@@ -760,16 +794,16 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 // 声明Slot的语句
 // v-slot:default="SlotProps"
 type VSlotStruct struct {
-	name     string
+	Name     string
 	propsKey string
-	children Statement
+	Children Statement
 }
 
 type VSlotStatementR struct {
-	vslot *VSlotStruct
+	VSlot *VSlotStruct
 
 	// 在运行时被赋值
-	scopeWhenDeclaration *Scope
+	ScopeWhenDeclaration *Scope
 }
 
 type ExecSlotOptions struct {
@@ -778,17 +812,17 @@ type ExecSlotOptions struct {
 }
 
 func (s *VSlotStatementR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
-	if s.scopeWhenDeclaration == nil {
+	if s.ScopeWhenDeclaration == nil {
 		panic(fmt.Sprintf("VSlotStatment should call Slot.SetScope to set scope befor Exec"))
 	}
-	scope := s.scopeWhenDeclaration
-	if o.SlotProps != nil {
+	scope := s.ScopeWhenDeclaration
+	if o != nil && o.SlotProps != nil {
 		scope = scope.Extend(map[string]interface{}{
-			s.vslot.propsKey: o.SlotProps.ToMap(),
+			s.VSlot.propsKey: o.SlotProps.ToMap(),
 		})
 	}
 
-	return s.vslot.children.Exec(ctx, &StatementOptions{
+	return s.VSlot.Children.Exec(ctx, &StatementOptions{
 		Scope: scope,
 	})
 }
@@ -831,8 +865,8 @@ func (s Slots) WrapScope(o *Scope) (sr SlotsR) {
 	sr = SlotsR{}
 	for k, v := range s {
 		sr[k] = &VSlotStatementR{
-			vslot:                v,
-			scopeWhenDeclaration: o,
+			VSlot:                v,
+			ScopeWhenDeclaration: o,
 		}
 	}
 	return
@@ -989,6 +1023,8 @@ var htmlTag = map[string]struct{}{
 	"ul":     {},
 	"li":     {},
 	"span":   {},
+	"script":   {},
+	"link":   {},
 }
 
 // 通过Vue树，生成运行程序
@@ -1017,7 +1053,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		}
 		return sg.Finish(), slots, nil
 	case parser.DoctypeNode:
-		return &StrStatement{str: v.Text}, nil, nil
+		return &StrStatement{Str: v.Text}, nil, nil
 	case parser.ElementNode:
 		var st Statement
 
@@ -1052,7 +1088,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					attrs = " " + attrs
 				}
 
-				sg.Append(&StrStatement{str: fmt.Sprintf("<%s%s>", v.Tag, attrs)})
+				sg.Append(&StrStatement{Str: fmt.Sprintf("<%s%s>", v.Tag, attrs)})
 
 				// 子集
 				for _, c := range v.Children {
@@ -1068,7 +1104,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 
 				// 单标签不需要结束
 				if !parser.VoidElements[v.Tag] {
-					sg.Append(&StrStatement{str: fmt.Sprintf("</%s>", v.Tag)})
+					sg.Append(&StrStatement{Str: fmt.Sprintf("</%s>", v.Tag)})
 				}
 			} else {
 				// 动态的（依赖变量）节点渲染
@@ -1098,20 +1134,6 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 
 				}
 
-				sg.Append(&TagStartStatement{
-					tag: v.Tag,
-					tagStruct: TagStruct{
-						Props:       p,
-						PropClass:   pc,
-						PropStyle:   ps,
-						StaticClass: v.Class,
-						StaticStyle: v.Style,
-						Directives:  dir,
-						Slots:       nil,
-						VBind:       vbind,
-					},
-				})
-
 				var childStatement Statement
 
 				if v.VHtml != "" {
@@ -1131,7 +1153,6 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 						exp: &JsExpression{node: node, code: v.VText},
 					}
 				} else {
-					// 子集 作为default slot
 					var childStatementG GroupStatement
 					for _, c := range v.Children {
 						s, slotsc, err := toStatement(c)
@@ -1147,10 +1168,28 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					childStatement = childStatementG.Finish()
 				}
 
-				// 子集
-				sg.Append(childStatement)
+				// 子集 作为default slot
+				slot := map[string]*VSlotStruct{
+					"default": {
+						Name:     "default",
+						propsKey: "",
+						Children: childStatement,
+					},
+				}
 
-				sg.Append(&StrStatement{str: fmt.Sprintf("</%s>", v.Tag)})
+				sg.Append(&TagStatement{
+					tag: v.Tag,
+					tagStruct: TagStruct{
+						Props:       p,
+						PropClass:   pc,
+						PropStyle:   ps,
+						StaticClass: v.Class,
+						StaticStyle: v.Style,
+						Directives:  dir,
+						Slots:       slot,
+						VBind:       vbind,
+					},
+				})
 			}
 
 			st = sg.Finish()
@@ -1207,9 +1246,9 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 
 			if childStatement != nil {
 				slots["default"] = &VSlotStruct{
-					name:     "default",
+					Name:     "default",
 					propsKey: "",
-					children: childStatement,
+					Children: childStatement,
 				}
 			}
 
@@ -1295,9 +1334,9 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 
 		if v.VSlot != nil {
 			slots[v.VSlot.SlotName] = &VSlotStruct{
-				name:     v.VSlot.SlotName,
+				Name:     v.VSlot.SlotName,
 				propsKey: v.VSlot.PropsKey,
-				children: st,
+				Children: st,
 			}
 
 			// 自己不是语句, 而是slot
@@ -1312,9 +1351,9 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		}
 		return s, slots, nil
 	case parser.CommentNode:
-		return &StrStatement{str: v.Text}, nil, nil
+		return &StrStatement{Str: v.Text}, nil, nil
 	default:
-		return &StrStatement{str: fmt.Sprintf("not case NodeType: %+v", v.NodeType)}, nil, nil
+		return &StrStatement{Str: fmt.Sprintf("not case NodeType: %+v", v.NodeType)}, nil, nil
 	}
 
 	return nil, nil, nil
@@ -1330,7 +1369,7 @@ func parseBeard(txt string) (Statement, error) {
 				continue
 			}
 			if index == 0 {
-				sg.Append(&StrStatement{str: v})
+				sg.Append(&StrStatement{Str: v})
 			} else {
 				sp := strings.Split(v, "}}")
 				if len(sp) == 2 {
@@ -1345,16 +1384,16 @@ func parseBeard(txt string) (Statement, error) {
 						})
 					}
 					if len(sp[1]) != 0 {
-						sg.Append(&StrStatement{str: sp[1]})
+						sg.Append(&StrStatement{Str: sp[1]})
 					}
 				} else {
 					// bad token
-					sg.Append(&StrStatement{str: v})
+					sg.Append(&StrStatement{Str: v})
 				}
 			}
 		}
 	} else {
-		sg.Append(&StrStatement{str: txt})
+		sg.Append(&StrStatement{Str: txt})
 	}
 
 	return sg.Finish(), nil
@@ -1366,7 +1405,7 @@ func NicePrintStatement(st Statement, lev int) string {
 
 	switch t := st.(type) {
 	case *StrStatement:
-		s += fmt.Sprintf("%s\n", t.str)
+		s += fmt.Sprintf("%s\n", t.Str)
 	case *GroupStatement:
 		s = ""
 		for _, v := range t.s {
@@ -1374,9 +1413,9 @@ func NicePrintStatement(st Statement, lev int) string {
 		}
 	case *ComponentStatement:
 		s += fmt.Sprintf("<%s>\n", t.ComponentKey)
-		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots["default"].children, lev+1))
+		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots["default"].Children, lev+1))
 		s += fmt.Sprintf("<%s/>\n", t.ComponentKey)
-	case *TagStartStatement:
+	case *TagStatement:
 		s += fmt.Sprintf("TagStart(%s, %+v)\n", t.tag, t.tagStruct)
 	case *IfStatement:
 		s += fmt.Sprintf("If(%+v)\n", t.conditionCode)
