@@ -205,7 +205,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 			PropClass: nil,
 			PropStyle: nil,
 			// 将所有Props传递到组件中
-			VBind:      &VBindC{Val: NewRawExpression(p.Props)},
+			VBind:      &vBindC{Val: newRawExpression(p.Props)},
 			Directives: nil,
 			Slots:      nil,
 		},

@@ -126,7 +126,7 @@ func (p *Props) Del(key string) {
 }
 
 type Directive struct {
-	Name  string // v-animate
+	Name  string // animate
 	Value string // {'a': 1}
 	Arg   string // v-set:arg
 }
@@ -170,7 +170,7 @@ type VueElement struct {
 	PropStyle  *Prop // 动态style
 	Props      Props // props, 动态和静态, 不包括class和style
 	VBind      *VBind
-	Directives Directives   // 自定义指令, 运行时
+	Directives Directives    // 自定义指令, 运行时
 	Class      Class         // 静态class
 	Style      Styles        // 静态style
 	Children   []*VueElement // 子节点
@@ -336,7 +336,7 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 						name = key
 					}
 					ds = append(ds, Directive{
-						Name:  name,
+						Name:  strings.TrimPrefix(name, "v-"),
 						Value: strings.Trim(attr.Value, " "),
 						Arg:   arg,
 					})

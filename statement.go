@@ -66,7 +66,12 @@ func (s *Scope) Set(k string, v interface{}) {
 	s.Value[k] = v
 }
 
-type Directive func(nodeData *NodeData, binding *DirectivesBinding)
+type RenderCtx struct {
+	W     Writer
+	Scope *Scope // 向当前scope声明一个值
+}
+
+type Directive func(ctx *RenderCtx, nodeData *NodeData, binding *DirectivesBinding)
 
 type DirectivesBinding struct {
 	Value interface{}
@@ -218,7 +223,7 @@ func compileProp(p *parser.Prop) (*propC, error) {
 	}, nil
 }
 
-func compileVBind(v *parser.VBind) (*VBindC, error) {
+func compileVBind(v *parser.VBind) (*vBindC, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -232,7 +237,7 @@ func compileVBind(v *parser.VBind) (*VBindC, error) {
 		return nil, fmt.Errorf("parseJs err: %w", err)
 	}
 
-	return &VBindC{Val: &jsExpression{node: node, code: v.Val}}, nil
+	return &vBindC{Val: &jsExpression{node: node, code: v.Val}}, nil
 }
 
 func compileDirective(ds parser.Directives) (directivesC, error) {
@@ -268,7 +273,7 @@ type tagStruct struct {
 	Props     propsC
 	PropClass *propC
 	PropStyle *propC
-	VBind     *VBindC
+	VBind     *vBindC
 
 	// 静态class, 将会和动态class合并
 	StaticClass parser.Class
@@ -299,7 +304,7 @@ type ComponentStruct struct {
 	//  那么PropClass的值是: ['a', 'b']
 	PropClass *propC
 	PropStyle *propC
-	VBind     *VBindC
+	VBind     *vBindC
 	// 静态class, 将会和动态class合并
 	StaticClass parser.Class
 	StaticStyle parser.Styles
@@ -313,11 +318,11 @@ type ComponentStruct struct {
 // v-bind='{id: id, 'other-attr': otherAttr}'
 // 有两个特殊用法:
 //  v-bind='$props': 将父组件的 props(不包括class和style) 一起传给子组件
-type VBindC struct {
+type vBindC struct {
 	Val expression
 }
 
-func (v *VBindC) Exec(s *Scope) *Props {
+func (v *vBindC) Exec(s *Scope) *Props {
 	if v == nil {
 		return nil
 	}
@@ -346,7 +351,7 @@ func (r *rawExpression) Exec(*Scope) interface{} {
 	return r.raw
 }
 
-func NewRawExpression(raw interface{}) *rawExpression {
+func newRawExpression(raw interface{}) *rawExpression {
 	return &rawExpression{raw: raw}
 }
 
@@ -423,11 +428,22 @@ type tagStatement struct {
 func execDirectives(ds directivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
 	for _, v := range ds {
 		val := v.Value.Exec(scope)
-		ctx.Directives[v.Name](o, &DirectivesBinding{
-			Value: val,
-			Arg:   v.Arg,
-			Name:  v.Name,
-		})
+		d, exist := ctx.Directives[v.Name]
+		if exist {
+			d(
+				&RenderCtx{
+					Scope: scope,
+					W:     ctx.W,
+				},
+				o,
+				&DirectivesBinding{
+					Value: val,
+					Arg:   v.Arg,
+					Name:  v.Name,
+				},
+			)
+		}
+
 	}
 }
 
@@ -435,11 +451,9 @@ type Class = parser.Class
 type Styles = parser.Styles
 
 type NodeData struct {
-	Scope *Scope // 向当前scope声明一个值
 	Props *Props // 给组件添加attr
 	Class *Class //
 	Style *Styles
-	W     Writer
 	Slots *Slots
 }
 
@@ -486,11 +500,9 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	// 指令可以修改scope/props/style/class/children
 	if len(t.tagStruct.Directives) != 0 {
 		execDirectives(t.tagStruct.Directives, ctx, o.Scope, &NodeData{
-			Scope: o.Scope,
 			Props: props,
 			Class: &cla,
 			Style: &sty,
-			W:     ctx.W,
 			Slots: &slotsR,
 		})
 	}
@@ -766,11 +778,9 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	// 指令可以修改scope/props/style/class/children
 	if len(c.ComponentStruct.Directives) != 0 {
 		execDirectives(c.ComponentStruct.Directives, ctx, o.Scope, &NodeData{
-			Scope: o.Scope, // 执行组件指令的scope是声明组件时的scope
 			Props: propsR,
 			Class: &o.StaticClass,
 			Style: &o.StaticStyle,
-			W:     ctx.W,
 			Slots: &slots,
 		})
 	}

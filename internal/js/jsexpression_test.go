@@ -3,10 +3,18 @@ package js
 import (
 	"fmt"
 	"github.com/robertkrimen/otto/parser"
-	"github.com/zbysir/vpl/internal/compiler"
 	"github.com/zbysir/vpl/internal/lib/log"
 	"testing"
 )
+
+type DataGet struct {
+	data map[string]interface{}
+}
+
+func (d DataGet) Get(k string) interface{} {
+	x, _, _ := ShouldLookInterface(d.data, k)
+	return x
+}
 
 func TestRunJs(t *testing.T) {
 	cases := []struct {
@@ -36,9 +44,8 @@ func TestRunJs(t *testing.T) {
 		{Code: "concat(1,2)", Value: "12"},
 	}
 
-	scope := &compiler.Scope{
-		Parent: nil,
-		Value: map[string]interface{}{
+	scope := &DataGet{
+		data: map[string]interface{}{
 			"a": 1,
 			"info": map[string]interface{}{
 				"sex":    26,

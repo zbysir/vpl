@@ -90,7 +90,7 @@ func TestDirective(t *testing.T) {
 				Delay     float64 `json:"delay"`
 				Duration  float64 `json:"duration"`
 			}
-			v.Directive("v-animate", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
+			v.Directive("animate", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				var a Animate
 				Copy(binding.Value, &a)
 
@@ -99,7 +99,7 @@ func TestDirective(t *testing.T) {
 				nodeData.Props.Append("data-wow-duration", fmt.Sprintf("%0.2fs", a.Duration))
 			})
 
-			v.Directive("v-style-important", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
+			v.Directive("style-important", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				m := binding.Value.(map[string]interface{})
 
 				for k, v := range m {
@@ -107,16 +107,16 @@ func TestDirective(t *testing.T) {
 				}
 			})
 
-			v.Directive("v-show", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
+			v.Directive("show", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				if binding.Value == false {
 					nodeData.Style.Add("display", "none")
 				}
 			})
-			v.Directive("v-let", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
-				nodeData.Scope.Set(binding.Arg, binding.Value)
+			v.Directive("let", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
+				ctx.Scope.Set(binding.Arg, binding.Value)
 			})
 
-			v.Directive("v-js-set", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
+			v.Directive("js-set", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				bs, _ := json.Marshal(binding.Value)
 
 				(*nodeData.Slots)["default"] = &vpl.Slot{
@@ -156,6 +156,13 @@ func TestDirective(t *testing.T) {
 			ioutil.WriteFile(fmt.Sprintf(c.Output, c.Name), []byte(html), os.ModePerm)
 
 			t.Logf("%s", html)
+
+			if c.Checker != nil {
+				err = c.Checker(html)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 		})
 
 	}

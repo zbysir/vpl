@@ -17,8 +17,8 @@ func TestClassStyle(t *testing.T) {
 			Name string
 			Txt  string
 		}
-		Output string
-		Test   func(html string) error
+		Output  string
+		Checker func(html string) error
 	}{
 		{
 			// 基础测试

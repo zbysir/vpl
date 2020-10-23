@@ -78,7 +78,7 @@ func InterfaceToStr(s interface{}, escaped ...bool) (d string) {
 	case int64:
 		d = strconv.FormatInt(a, 10)
 	case float64:
-		d = strconv.FormatFloat(a, 'f', 10, 64)
+		d = strconv.FormatFloat(a, 'f', -1, 64)
 	default:
 		bs, _ := json.Marshal(a)
 		d = string(bs)

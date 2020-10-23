@@ -22,11 +22,11 @@ func CompileJS(code string) (node ast.Node, err error) {
 	return p.Body[0], nil
 }
 
-type DataMapper interface {
+type DataGetter interface {
 	Get(k string) interface{}
 }
 
-func RunJsExpression(node ast.Node, scope DataMapper) (r interface{}, err error) {
+func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error) {
 	switch t := node.(type) {
 	case *ast.ExpressionStatement:
 		return RunJsExpression(t.Expression, scope)
