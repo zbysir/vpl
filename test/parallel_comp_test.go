@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/zbysir/vpl"
-	"github.com/zbysir/vpl/internal/compiler"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -77,7 +76,7 @@ func TestParallel(t *testing.T) {
 
 			t.Logf("run....")
 
-			props := compiler.NewProps()
+			props := vpl.NewProps()
 			props.AppendMap(map[string]interface{}{
 				"sleep": func(r *vpl.Vpl, args ...interface{}) interface{} {
 					ti := interfaceToFloat(args[0])

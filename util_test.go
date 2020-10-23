@@ -1,4 +1,4 @@
-package compiler
+package vpl
 
 import "testing"
 

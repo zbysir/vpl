@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
-	"github.com/zbysir/vpl/internal/compiler"
 	"github.com/zbysir/vpl/internal/js"
 	"io/ioutil"
 	"os"
@@ -67,7 +66,7 @@ func TestFunc(t *testing.T) {
 
 			t.Logf("run....")
 
-			props := compiler.NewProps()
+			props := vpl.NewProps()
 			props.AppendMap(map[string]interface{}{
 				"appendName": js.Function(func(args ...interface{}) interface{} {
 					return fmt.Sprintf("%s|%s", args[0], args[1])

@@ -1,4 +1,4 @@
-package compiler
+package vpl
 
 import (
 	"github.com/zbysir/vpl/internal/parser"

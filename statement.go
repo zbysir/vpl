@@ -1,4 +1,4 @@
-package compiler
+package vpl
 
 import (
 	"context"
@@ -76,33 +76,54 @@ type DirectivesBinding struct {
 
 // 编译之后的Prop
 // 将js表达式解析成AST, 加速运行
-type PropC struct {
+type propC struct {
 	Key     string
 	ValCode string
-	Val     Expression
+	Val     expression
+}
+
+type propsC []*propC
+
+// 执行编译之后的PropsC, 返回数值PropsR.
+func (r propsC) exec(scope *Scope) *Props {
+	if len(r) == 0 {
+		return nil
+	}
+	pr := NewProps()
+	for _, p := range r {
+		pr.Append(p.Key, p.exec(scope).Val)
+	}
+	return pr
+}
+
+func (r *propC) exec(scope *Scope) *Prop {
+	if r == nil {
+		return &Prop{}
+	}
+	return &Prop{Key: r.Key, Val: r.Val.Exec(scope)}
 }
 
 // 数值Prop
 // 执行PropC会得到PropR
-type PropR struct {
+type Prop struct {
 	Key string
 	Val interface{}
 }
 
 type Props struct {
-	orderKey []string          // 在生成attr时会用到顺序
-	data     map[string]*PropR // 存储map有利于快速取值
+	orderKey []string         // 在生成attr时会用到顺序
+	data     map[string]*Prop // 存储map有利于快速取值
 }
 
 func NewProps() *Props {
 	return &Props{
 		// 减少扩展slice的cpu消耗
 		orderKey: make([]string, 0, 0),
-		data:     map[string]*PropR{},
+		data:     map[string]*Prop{},
 	}
 }
 
-func (r *Props) ForEach(cb func(index int, r *PropR)) {
+func (r *Props) ForEach(cb func(index int, r *Prop)) {
 	for index, k := range r.orderKey {
 		cb(index, r.data[k])
 	}
@@ -125,7 +146,7 @@ func (r *Props) Append(k string, v interface{}) {
 	if exist {
 		o.Val = v
 	} else {
-		r.data[k] = &PropR{
+		r.data[k] = &Prop{
 			Key: k,
 			Val: v,
 		}
@@ -149,18 +170,18 @@ func (r *Props) appendProps(ps *Props) {
 	if ps == nil {
 		return
 	}
-	ps.ForEach(func(index int, p *PropR) {
+	ps.ForEach(func(index int, p *Prop) {
 		r.Append(p.Key, p.Val)
 	})
 }
 
-func (r *Props) Get(key string) (*PropR, bool) {
+func (r *Props) Get(key string) (*Prop, bool) {
 	v, exist := r.data[key]
 	return v, exist
 }
 
-func compileProps(p parser.Props) (PropsC, error) {
-	pc := make(PropsC, len(p))
+func compileProps(p parser.Props) (propsC, error) {
+	pc := make(propsC, len(p))
 	for i, v := range p {
 		p, err := compileProp(v)
 		if err != nil {
@@ -171,26 +192,26 @@ func compileProps(p parser.Props) (PropsC, error) {
 	return pc, nil
 }
 
-func compileProp(p *parser.Prop) (*PropC, error) {
+func compileProp(p *parser.Prop) (*propC, error) {
 	if p == nil {
 		return nil, nil
 	}
-	var valExpression Expression
+	var valExpression expression
 
 	if p.IsStatic {
-		valExpression = &RawExpression{raw: p.Val}
+		valExpression = &rawExpression{raw: p.Val}
 	} else {
 		if p.Val != "" {
 			node, err := js.CompileJS(p.Val)
 			if err != nil {
 				return nil, fmt.Errorf("parseJs err: %w", err)
 			}
-			valExpression = &JsExpression{node: node, code: p.Val}
+			valExpression = &jsExpression{node: node, code: p.Val}
 		} else {
-			valExpression = &NullExpression{}
+			valExpression = &nullExpression{}
 		}
 	}
-	return &PropC{
+	return &propC{
 		Key:     p.Key,
 		ValCode: p.Val,
 		Val:     valExpression,
@@ -211,52 +232,31 @@ func compileVBind(v *parser.VBind) (*VBindC, error) {
 		return nil, fmt.Errorf("parseJs err: %w", err)
 	}
 
-	return &VBindC{Val: &JsExpression{node: node, code: v.Val}}, nil
+	return &VBindC{Val: &jsExpression{node: node, code: v.Val}}, nil
 }
 
-func compileDirective(ds parser.Directives) (DirectivesC, error) {
+func compileDirective(ds parser.Directives) (directivesC, error) {
 	if len(ds) == 0 {
 		return nil, nil
 	}
 
-	pc := make(DirectivesC, len(ds))
+	pc := make(directivesC, len(ds))
 	for i, v := range ds {
 		node, err := js.CompileJS(v.Value)
 		if err != nil {
 			return nil, fmt.Errorf("parseJs err: %w", err)
 		}
-		pc[i] = DirectiveC{
+		pc[i] = directiveC{
 			Name:  v.Name,
-			Value: &JsExpression{node: node, code: v.Value},
+			Value: &jsExpression{node: node, code: v.Value},
 			Arg:   v.Arg,
 		}
 	}
 	return pc, nil
 }
 
-type PropsC []*PropC
-
-// 执行编译之后的PropsC, 返回数值PropsR.
-func (r PropsC) exec(scope *Scope) *Props {
-	if len(r) == 0 {
-		return nil
-	}
-	pr := NewProps()
-	for _, p := range r {
-		pr.Append(p.Key, p.exec(scope).Val)
-	}
-	return pr
-}
-
-func (r *PropC) exec(scope *Scope) *PropR {
-	if r == nil {
-		return &PropR{}
-	}
-	return &PropR{Key: r.Key, Val: r.Val.Exec(scope)}
-}
-
 // 作用在tag的所有属性
-type TagStruct struct {
+type tagStruct struct {
 	// Props: 无论动态还是静态, 都是Props (除了style和class, style和class为了优化性能, 需要特殊处理)
 	// 静态的attr也处理成Props是为了保持顺序, 当然也是为了减少概念
 	//
@@ -265,26 +265,26 @@ type TagStruct struct {
 	//  其中 PropStyle 值为: style
 	//
 	// 另外tag上的 Props 都会被转为html attr
-	Props     PropsC
-	PropClass *PropC
-	PropStyle *PropC
+	Props     propsC
+	PropClass *propC
+	PropStyle *propC
 	VBind     *VBindC
 
 	// 静态class, 将会和动态class合并
 	StaticClass parser.Class
 	StaticStyle parser.Styles
 
-	Directives DirectivesC
-	Slots      Slots
+	Directives directivesC
+	Slots      SlotsC
 }
 
-type DirectiveC struct {
+type directiveC struct {
 	Name  string     // v-animate
-	Value Expression // {'a': 1}
+	Value expression // {'a': 1}
 	Arg   string     // v-set:arg
 }
 
-type DirectivesC []DirectiveC
+type directivesC []directiveC
 
 // 组件的属性
 type ComponentStruct struct {
@@ -293,20 +293,20 @@ type ComponentStruct struct {
 	//  如: <Menu :data="data" id="abc" :style="{left: '1px'}">
 	//  其中 Props 值为: data, id
 	//  其中 PropStyle 值为: style
-	Props PropsC
+	Props propsC
 	// PropClass指动态class
 	//  如 <Menu :class="['a','b']" class="c">
 	//  那么PropClass的值是: ['a', 'b']
-	PropClass *PropC
-	PropStyle *PropC
+	PropClass *propC
+	PropStyle *propC
 	VBind     *VBindC
 	// 静态class, 将会和动态class合并
 	StaticClass parser.Class
 	StaticStyle parser.Styles
 
-	Directives DirectivesC
+	Directives directivesC
 	// 传递给这个组件的Slots
-	Slots Slots
+	Slots SlotsC
 }
 
 // VBind 语法, 一次传递多个prop
@@ -314,7 +314,7 @@ type ComponentStruct struct {
 // 有两个特殊用法:
 //  v-bind='$props': 将父组件的 props(不包括class和style) 一起传给子组件
 type VBindC struct {
-	Val Expression
+	Val expression
 }
 
 func (v *VBindC) Exec(s *Scope) *Props {
@@ -333,29 +333,29 @@ func (v *VBindC) Exec(s *Scope) *Props {
 	return pr
 }
 
-type Expression interface {
+type expression interface {
 	Exec(ctx *Scope) interface{}
 }
 
 // 原始值
-type RawExpression struct {
+type rawExpression struct {
 	raw interface{}
 }
 
-func (r *RawExpression) Exec(*Scope) interface{} {
+func (r *rawExpression) Exec(*Scope) interface{} {
 	return r.raw
 }
 
-func NewRawExpression(raw interface{}) *RawExpression {
-	return &RawExpression{raw: raw}
+func NewRawExpression(raw interface{}) *rawExpression {
+	return &rawExpression{raw: raw}
 }
 
-type JsExpression struct {
+type jsExpression struct {
 	node ast.Node
 	code string
 }
 
-func (r *JsExpression) Exec(scope *Scope) interface{} {
+func (r *jsExpression) Exec(scope *Scope) interface{} {
 	v, err := js.RunJsExpression(r.node, scope)
 	if err != nil {
 		log.Warningf("runJsExpression err:%v", err)
@@ -365,14 +365,14 @@ func (r *JsExpression) Exec(scope *Scope) interface{} {
 	return v
 }
 
-func (r *JsExpression) String() string {
+func (r *jsExpression) String() string {
 	return r.code
 }
 
-type NullExpression struct {
+type nullExpression struct {
 }
 
-func (r *NullExpression) Exec(*Scope) interface{} {
+func (r *nullExpression) Exec(*Scope) interface{} {
 	return nil
 }
 
@@ -415,12 +415,12 @@ func (s *StrStatement) AppendStr(str string) {
 }
 
 // tag开始块
-type TagStatement struct {
+type tagStatement struct {
 	tag       string
-	tagStruct TagStruct
+	tagStruct tagStruct
 }
 
-func execDirectives(ds DirectivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
+func execDirectives(ds directivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
 	for _, v := range ds {
 		val := v.Value.Exec(scope)
 		ctx.Directives[v.Name](o, &DirectivesBinding{
@@ -440,10 +440,10 @@ type NodeData struct {
 	Class *Class //
 	Style *Styles
 	W     Writer
-	Slots *SlotsR
+	Slots *Slots
 }
 
-func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	// 将tagStruct根据scope变量渲染出属性
 	var attrs strings.Builder
 
@@ -453,7 +453,7 @@ func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		cla.Merge(t.tagStruct.StaticClass)
 	}
 	if t.tagStruct.PropClass != nil {
-		claProp := GetClassFromProps(t.tagStruct.PropClass.exec(o.Scope).Val)
+		claProp := getClassFromProps(t.tagStruct.PropClass.exec(o.Scope).Val)
 		cla.Merge(claProp)
 	}
 
@@ -507,7 +507,7 @@ func (t *TagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		attrs.WriteString(sty.ToAttr())
 	}
 
-	props.ForEach(func(index int, p *PropR) {
+	props.ForEach(func(index int, p *Prop) {
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
 		}
@@ -571,21 +571,21 @@ func getStyleFromProps(styleProps interface{}) Styles {
 	return st
 }
 
-type IfStatement struct {
+type ifStatement struct {
 	conditionCode  string
-	condition      Expression
+	condition      expression
 	ChildStatement Statement
-	ElseIf         []*ElseStatement
+	ElseIf         []*elseStatement
 }
 
-type ElseStatement struct {
+type elseStatement struct {
 	conditionCode string
 	// 如果condition为空 则说明是else节点, 否则是elseif节点
-	condition      Expression
+	condition      expression
 	ChildStatement Statement
 }
 
-func (i *IfStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (i *ifStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.condition.Exec(o.Scope)
 	if util.InterfaceToBool(r) {
 		err := i.ChildStatement.Exec(ctx, o)
@@ -616,18 +616,18 @@ func (i *IfStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	return nil
 }
 
-type ForStatement struct {
+type forStatement struct {
 	ArrayKey    string
-	Array       Expression
+	Array       expression
 	ItemKey     string
 	IndexKey    string
 	ChildChunks Statement
 }
 
-func (f ForStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (f forStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	arr := f.Array.Exec(o.Scope)
 
-	for index, item := range interface2Slice(arr) {
+	for index, item := range util.Interface2Slice(arr) {
 		scope := o.Scope.Extend(map[string]interface{}{
 			f.IndexKey: index,
 			f.ItemKey:  item,
@@ -644,13 +644,13 @@ func (f ForStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	return nil
 }
 
-type GroupStatement struct {
+type groupStatement struct {
 	s         []Statement
 	strBuffer strings.Builder
 }
 
 // 调用GroupStatement.Append之后还必须调用Finish才能保证GroupStatement中的数据是正确的
-func (g *GroupStatement) Finish() Statement {
+func (g *groupStatement) Finish() Statement {
 	if g.strBuffer.Len() != 0 {
 		g.s = append(g.s, &StrStatement{Str: g.strBuffer.String()})
 		g.strBuffer.Reset()
@@ -666,7 +666,7 @@ func (g *GroupStatement) Finish() Statement {
 	return g
 }
 
-func (g *GroupStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (g *groupStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	for _, v := range g.s {
 		err := v.Exec(ctx, o)
 		if err != nil {
@@ -677,7 +677,7 @@ func (g *GroupStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	return nil
 }
 
-func (g *GroupStatement) Last() Statement {
+func (g *groupStatement) Last() Statement {
 	if len(g.s) == 0 {
 		return nil
 	}
@@ -685,7 +685,7 @@ func (g *GroupStatement) Last() Statement {
 	return g.s[len(g.s)-1]
 }
 
-func (g *GroupStatement) First() Statement {
+func (g *groupStatement) First() Statement {
 	if len(g.s) == 0 {
 		return nil
 	}
@@ -694,14 +694,14 @@ func (g *GroupStatement) First() Statement {
 }
 
 // Append 拼接一个新的语句到组里, 如果有连续的字符串语句 则会合并成为一个字符串语句.
-func (g *GroupStatement) Append(st Statement) {
+func (g *groupStatement) Append(st Statement) {
 	if st == nil {
 		return
 	}
 	switch appT := st.(type) {
 	case *StrStatement:
 		g.strBuffer.WriteString(appT.Str)
-	case *GroupStatement:
+	case *groupStatement:
 		for _, v := range appT.s {
 			g.Append(v)
 		}
@@ -805,16 +805,16 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	})
 }
 
-// 声明Slot的语句
+// 声明Slot的语句(编译时)
 // v-slot:default="SlotProps"
-type VSlot struct {
+type vSlotC struct {
 	Name     string
 	propsKey string
 	Children Statement
 }
 
 // Slot的运行时
-type SlotR struct {
+type Slot struct {
 	Name     string
 	propsKey string
 	Children Statement
@@ -828,7 +828,7 @@ type ExecSlotOptions struct {
 	SlotProps *Props
 }
 
-func (s *SlotR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
+func (s *Slot) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
 	if s.ScopeWhenDeclaration == nil {
 		panic(fmt.Sprintf("VSlotStatment should call Slot.SetScope to set scope befor Exec"))
 	}
@@ -846,11 +846,11 @@ func (s *SlotR) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
 
 // 胡子语法: {{a}}
 // 会进行html转义
-type MustacheStatement struct {
-	exp Expression
+type mustacheStatement struct {
+	exp expression
 }
 
-func (i *MustacheStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (i *mustacheStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.exp.Exec(o.Scope)
 
 	ctx.W.WriteString(util.InterfaceToStr(r, true))
@@ -859,11 +859,11 @@ func (i *MustacheStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 // 不会转义的html语句
 // 用于v-html
-type RawHtmlStatement struct {
-	exp Expression
+type rawHtmlStatement struct {
+	exp expression
 }
 
-func (i *RawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
+func (i *rawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	r := i.exp.Exec(o.Scope)
 
 	ctx.W.WriteString(util.InterfaceToStr(r, false))
@@ -872,16 +872,16 @@ func (i *RawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 // https://cn.vuejs.org/v2/guide/components-slots.html
 // Slots 存放传递给组件的所有Slot, vue语法: <h1 v-slot:default="xxx"></h1>
-type Slots map[string]*VSlot
+type SlotsC map[string]*vSlotC
 
 // WrapScope 设置在slot声明时的scope
-func (s Slots) WrapScope(o *Scope) (sr SlotsR) {
+func (s SlotsC) WrapScope(o *Scope) (sr Slots) {
 	if len(s) == 0 {
 		return nil
 	}
-	sr = SlotsR{}
+	sr = Slots{}
 	for k, v := range s {
-		sr[k] = &SlotR{
+		sr[k] = &Slot{
 			Name:                 v.Name,
 			propsKey:             v.propsKey,
 			Children:             v.Children,
@@ -891,13 +891,13 @@ func (s Slots) WrapScope(o *Scope) (sr SlotsR) {
 	return
 }
 
-type SlotsR map[string]*SlotR
+type Slots map[string]*Slot
 
-func (s SlotsR) Default() *SlotR {
+func (s Slots) Default() *Slot {
 	return s.Get("default")
 }
 
-func (s SlotsR) Get(key string) *SlotR {
+func (s Slots) Get(key string) *Slot {
 	if s == nil {
 		return nil
 	}
@@ -922,15 +922,15 @@ func ParseHtmlToStatement(tpl string) (Statement, error) {
 
 // 执行语句(组件/Tag)所需的参数
 type StatementOptions struct {
-	Slots SlotsR
+	Slots Slots
 
 	// 渲染组件时, 组件上的props
 	// 如<Menu :data="data">
 	//   <slot name="default">
 	// 非组件时不使用
 	Props     *Props
-	PropClass *PropR
-	PropStyle *PropR
+	PropClass *Prop
+	PropStyle *Prop
 
 	StaticClass Class
 	StaticStyle Styles
@@ -1005,29 +1005,6 @@ func canBeStr(v *parser.VueElement) bool {
 		len(v.Directives) == 0
 }
 
-// 将静态props生成attr
-func genAttrFromProps(props parser.Props) string {
-	c := strings.Builder{}
-	for _, a := range props {
-		if !a.IsStatic {
-			continue
-		}
-		v := a.Val
-		k := a.Key
-
-		if c.Len() != 0 {
-			c.WriteString(" ")
-		}
-		if v != "" {
-			c.WriteString(fmt.Sprintf(`%s="%s"`, k, v))
-		} else {
-			c.WriteString(fmt.Sprintf(`%s`, k))
-		}
-	}
-
-	return c.String()
-}
-
 var htmlTag = map[string]struct{}{
 	"html":   {},
 	"head":   {},
@@ -1052,14 +1029,14 @@ var htmlTag = map[string]struct{}{
 //   - 将连在一起的静态节点预渲染为字符串
 // - 预编译JS
 // 原则是将运行时消耗减到最小
-func toStatement(v *parser.VueElement) (Statement, Slots, error) {
-	slots := Slots{}
+func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
+	slots := SlotsC{}
 	switch v.NodeType {
 	case parser.RootNode:
 		// Root节点只是一个虚拟节点, 不渲染自己, 直接渲染子级
 
 		// 子集
-		var sg GroupStatement
+		var sg groupStatement
 		for _, c := range v.Children {
 			s, slotsc, err := toStatement(c)
 			if err != nil {
@@ -1078,7 +1055,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 
 		// 静态节点(不是自定义组件)，则走渲染tag逻辑, 否则调用渲染组件方法
 		if _, ok := htmlTag[v.Tag]; ok {
-			var sg GroupStatement
+			var sg groupStatement
 
 			// 如果没使用任何变量, 则是静态组件, 则编译成字符串
 			if canBeStr(v) {
@@ -1160,19 +1137,19 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					if err != nil {
 						return nil, nil, err
 					}
-					childStatement = &RawHtmlStatement{
-						exp: &JsExpression{node: node, code: v.VHtml},
+					childStatement = &rawHtmlStatement{
+						exp: &jsExpression{node: node, code: v.VHtml},
 					}
 				} else if v.VText != "" {
 					node, err := js.CompileJS(v.VText)
 					if err != nil {
 						return nil, nil, err
 					}
-					childStatement = &MustacheStatement{
-						exp: &JsExpression{node: node, code: v.VText},
+					childStatement = &mustacheStatement{
+						exp: &jsExpression{node: node, code: v.VText},
 					}
 				} else {
-					var childStatementG GroupStatement
+					var childStatementG groupStatement
 					for _, c := range v.Children {
 						s, slotsc, err := toStatement(c)
 						if err != nil {
@@ -1188,7 +1165,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				}
 
 				// 子集 作为default slot
-				slot := map[string]*VSlot{
+				slot := map[string]*vSlotC{
 					"default": {
 						Name:     "default",
 						propsKey: "",
@@ -1196,9 +1173,9 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					},
 				}
 
-				sg.Append(&TagStatement{
+				sg.Append(&tagStatement{
 					tag: v.Tag,
-					tagStruct: TagStruct{
+					tagStruct: tagStruct{
 						Props:       p,
 						PropClass:   pc,
 						PropStyle:   ps,
@@ -1235,20 +1212,20 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				if err != nil {
 					return nil, nil, err
 				}
-				childStatement = &RawHtmlStatement{
-					exp: &JsExpression{node: node, code: v.VHtml},
+				childStatement = &rawHtmlStatement{
+					exp: &jsExpression{node: node, code: v.VHtml},
 				}
 			} else if v.VText != "" {
 				node, err := js.CompileJS(v.VText)
 				if err != nil {
 					return nil, nil, err
 				}
-				childStatement = &MustacheStatement{
-					exp: &JsExpression{node: node, code: v.VText},
+				childStatement = &mustacheStatement{
+					exp: &jsExpression{node: node, code: v.VText},
 				}
 			} else {
 				// 子集 作为default slot
-				var childStatementG GroupStatement
+				var childStatementG groupStatement
 				for _, c := range v.Children {
 					s, slotsc, err := toStatement(c)
 					if err != nil {
@@ -1264,7 +1241,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 			}
 
 			if childStatement != nil {
-				slots["default"] = &VSlot{
+				slots["default"] = &vSlotC{
 					Name:     "default",
 					propsKey: "",
 					Children: childStatement,
@@ -1297,7 +1274,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 			}
 
 			// 如果调用了自定义组件, 则slots就算这个自定义组件当中, 而不算在父级当中.
-			slots = Slots{}
+			slots = SlotsC{}
 		}
 
 		if v.VIf != nil {
@@ -1306,7 +1283,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				return nil, nil, err
 			}
 			// 解析else节点
-			elseIfStatements := make([]*ElseStatement, len(v.VIf.ElseIf))
+			elseIfStatements := make([]*elseStatement, len(v.VIf.ElseIf))
 			for i, f := range v.VIf.ElseIf {
 				st, slotsc, err := toStatement(f.VueElement)
 				if err != nil {
@@ -1316,7 +1293,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 					slots[k] = v
 				}
 
-				s := &ElseStatement{
+				s := &elseStatement{
 					conditionCode:  f.Condition,
 					condition:      nil,
 					ChildStatement: st,
@@ -1328,14 +1305,14 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 						return nil, nil, err
 					}
 
-					s.condition = &JsExpression{node: n, code: f.Condition}
+					s.condition = &jsExpression{node: n, code: f.Condition}
 				}
 
 				elseIfStatements[i] = s
 			}
 
-			st = &IfStatement{
-				condition:      &JsExpression{node: ifCondition, code: v.VIf.Condition},
+			st = &ifStatement{
+				condition:      &jsExpression{node: ifCondition, code: v.VIf.Condition},
 				conditionCode:  v.VIf.Condition,
 				ChildStatement: st,
 				ElseIf:         elseIfStatements,
@@ -1348,9 +1325,9 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 				return nil, nil, err
 			}
 
-			st = &ForStatement{
+			st = &forStatement{
 				ArrayKey:    v.VFor.ArrayKey,
-				Array:       &JsExpression{node: p, code: v.VFor.ArrayKey},
+				Array:       &jsExpression{node: p, code: v.VFor.ArrayKey},
 				ItemKey:     v.VFor.ItemKey,
 				IndexKey:    v.VFor.IndexKey,
 				ChildChunks: st,
@@ -1358,7 +1335,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 		}
 
 		if v.VSlot != nil {
-			slots[v.VSlot.SlotName] = &VSlot{
+			slots[v.VSlot.SlotName] = &vSlotC{
 				Name:     v.VSlot.SlotName,
 				propsKey: v.VSlot.PropsKey,
 				Children: st,
@@ -1385,7 +1362,7 @@ func toStatement(v *parser.VueElement) (Statement, Slots, error) {
 
 // 将胡子语法处理成多个语句
 func parseBeard(txt string) (Statement, error) {
-	var sg GroupStatement
+	var sg groupStatement
 
 	if strings.Contains(txt, "{{") {
 		for index, v := range strings.Split(txt, "{{") {
@@ -1403,8 +1380,8 @@ func parseBeard(txt string) (Statement, error) {
 						if err != nil {
 							return nil, err
 						}
-						sg.Append(&MustacheStatement{
-							exp: &JsExpression{node: node, code: code},
+						sg.Append(&mustacheStatement{
+							exp: &jsExpression{node: node, code: code},
 						})
 					}
 					if len(sp[1]) != 0 {
@@ -1421,49 +1398,4 @@ func parseBeard(txt string) (Statement, error) {
 	}
 
 	return sg.Finish(), nil
-}
-
-// 打印Statement, 方便调试
-func NicePrintStatement(st Statement, lev int) string {
-	s := strings.Repeat(" ", lev)
-
-	switch t := st.(type) {
-	case *StrStatement:
-		s += fmt.Sprintf("%s\n", t.Str)
-	case *GroupStatement:
-		s = ""
-		for _, v := range t.s {
-			s += fmt.Sprintf("%s", NicePrintStatement(v, lev))
-		}
-	case *ComponentStatement:
-		s += fmt.Sprintf("<%s>\n", t.ComponentKey)
-		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots["default"].Children, lev+1))
-		s += fmt.Sprintf("<%s/>\n", t.ComponentKey)
-	case *TagStatement:
-		s += fmt.Sprintf("TagStart(%s, %+v)\n", t.tag, t.tagStruct)
-	case *IfStatement:
-		s += fmt.Sprintf("If(%+v)\n", t.conditionCode)
-		s += fmt.Sprintf("%s", NicePrintStatement(t.ChildStatement, lev+1))
-
-		for _, ef := range t.ElseIf {
-			if ef.conditionCode != "" {
-				s += fmt.Sprintf("ElseIf(%+v)\n", ef.conditionCode)
-			} else {
-				s += fmt.Sprintf("Else\n")
-			}
-
-			s += fmt.Sprintf("%s", NicePrintStatement(ef.ChildStatement, lev+1))
-		}
-	case *ForStatement:
-		s += fmt.Sprintf("For(%s in %s)\n", t.ItemKey, t.ArrayKey)
-		s += fmt.Sprintf("%s", NicePrintStatement(t.ChildChunks, lev+1))
-	case *MustacheStatement:
-		s += fmt.Sprintf("{{%s}}\n", t.exp)
-	case *RawHtmlStatement:
-		s += fmt.Sprintf("{{%s}}\n", t.exp)
-	default:
-
-	}
-
-	return s
 }

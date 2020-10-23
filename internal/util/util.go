@@ -121,3 +121,41 @@ func InterfaceToBool(s interface{}) (d bool) {
 		return true
 	}
 }
+
+func Interface2Slice(s interface{}) (d []interface{}) {
+	switch a := s.(type) {
+	case []interface{}:
+		return a
+	case []map[string]interface{}:
+		d = make([]interface{}, len(a))
+		for i, v := range a {
+			d[i] = v
+		}
+	case []int:
+		d = make([]interface{}, len(a))
+		for i, v := range a {
+			d[i] = v
+		}
+	case []int64:
+		d = make([]interface{}, len(a))
+		for i, v := range a {
+			d[i] = v
+		}
+	case []int32:
+		d = make([]interface{}, len(a))
+		for i, v := range a {
+			d[i] = v
+		}
+	case []string:
+		d = make([]interface{}, len(a))
+		for i, v := range a {
+			d[i] = v
+		}
+	case []float64:
+		d = make([]interface{}, len(a))
+		for i, v := range a {
+			d[i] = v
+		}
+	}
+	return
+}

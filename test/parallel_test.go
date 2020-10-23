@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/zbysir/vpl"
-	"github.com/zbysir/vpl/internal/compiler"
 	"sync"
 	"testing"
 )
@@ -49,7 +48,7 @@ func TestGoParallel(t *testing.T) {
 	var ii interface{}
 	bs, _ := json.Marshal(rows)
 	json.Unmarshal(bs, &ii)
-	props := compiler.NewProps()
+	props := vpl.NewProps()
 	props.AppendMap(map[string]interface{}{
 		"rows": ii,
 	})

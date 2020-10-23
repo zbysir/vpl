@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
-	"github.com/zbysir/vpl/internal/compiler"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -91,7 +90,7 @@ func TestDirective(t *testing.T) {
 				Delay     float64 `json:"delay"`
 				Duration  float64 `json:"duration"`
 			}
-			v.Directive("v-animate", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+			v.Directive("v-animate", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				var a Animate
 				Copy(binding.Value, &a)
 
@@ -100,7 +99,7 @@ func TestDirective(t *testing.T) {
 				nodeData.Props.Append("data-wow-duration", fmt.Sprintf("%0.2fs", a.Duration))
 			})
 
-			v.Directive("v-style-important", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+			v.Directive("v-style-important", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				m := binding.Value.(map[string]interface{})
 
 				for k, v := range m {
@@ -108,22 +107,22 @@ func TestDirective(t *testing.T) {
 				}
 			})
 
-			v.Directive("v-show", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+			v.Directive("v-show", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				if binding.Value == false {
 					nodeData.Style.Add("display", "none")
 				}
 			})
-			v.Directive("v-let", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+			v.Directive("v-let", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				nodeData.Scope.Set(binding.Arg, binding.Value)
 			})
 
-			v.Directive("v-js-set", func(nodeData *compiler.NodeData, binding *compiler.DirectivesBinding) {
+			v.Directive("v-js-set", func(nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				bs, _ := json.Marshal(binding.Value)
 
-				(*nodeData.Slots)["default"] = &compiler.SlotR{
+				(*nodeData.Slots)["default"] = &vpl.Slot{
 					Name:                 "",
-					Children:             &compiler.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
-					ScopeWhenDeclaration: &compiler.Scope{},
+					Children:             &vpl.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
+					ScopeWhenDeclaration: &vpl.Scope{},
 				}
 			})
 
