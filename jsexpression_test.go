@@ -1,4 +1,4 @@
-package js
+package vpl
 
 import (
 	"fmt"
@@ -44,16 +44,15 @@ func TestRunJs(t *testing.T) {
 		{Code: "concat(1,2)", Value: "12"},
 	}
 
-	scope := &DataGet{
-		data: map[string]interface{}{
-			"a": 1,
-			"info": map[string]interface{}{
-				"sex":    26,
-				"sexkey": "sex",
-			},
-			"concat": func(args ...interface{}) interface{} {
-				return fmt.Sprintf("%+v%+v", args[0], args[1])
-			},
+	scope := NewScope()
+	scope.Value = map[string]interface{}{
+		"a": 1,
+		"info": map[string]interface{}{
+			"sex":    26,
+			"sexkey": "sex",
+		},
+		"concat": func(ctx *RenderCtx, args ...interface{}) interface{} {
+			return fmt.Sprintf("%+v%+v", args[0], args[1])
 		},
 	}
 
@@ -64,9 +63,12 @@ func TestRunJs(t *testing.T) {
 			log.Warning(err)
 			t.Fatal(err)
 		}
-		v, err := RunJsExpression(p.Body[0], scope)
+		v, err := runJsExpression(p.Body[0], &RenderCtx{
+			Scope: scope,
+			Store: nil,
+		})
 		if err != nil {
-			log.Warningf("RunJsExpression err:%v", err)
+			log.Warningf("runJsExpression err:%v", err)
 			t.Fatal(err)
 		}
 

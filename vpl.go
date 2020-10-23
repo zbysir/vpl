@@ -24,6 +24,7 @@ type Vpl struct {
 	canBeAttr func(p *Prop) bool
 }
 
+// New 返回Vpl实例, 该实例应该被共用在多次渲染中, 推荐做法是整个程序只有一个Vpl实例.
 func New() *Vpl {
 	return &Vpl{
 		components: map[string]Statement{
@@ -130,14 +131,20 @@ func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
 	return v.Component(name, s)
 }
 
-// 设置全局变量
-// 在所有的组件中都生效
-// 用于设置全局方法
+// Global 设置全局变量, 在所有的组件中都生效
+// 也可用于设置全局方法
 func (v *Vpl) Global(name string, val interface{}) () {
 	v.prototype.Set(name, val)
 	return
 }
 
+// Function 是对 Global 方法设置全局方法的再次封装
+func (v *Vpl) Function(name string, val Function) () {
+	v.prototype.Set(name, val)
+	return
+}
+
+// Directive 声明一个指令
 func (v *Vpl) Directive(name string, val Directive) () {
 	v.directives[name] = val
 	return
@@ -205,7 +212,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 			PropClass: nil,
 			PropStyle: nil,
 			// 将所有Props传递到组件中
-			VBind:      &vBindC{Val: newRawExpression(p.Props)},
+			VBind:      &vBindC{val: newRawExpression(p.Props)},
 			Directives: nil,
 			Slots:      nil,
 		},
@@ -220,7 +227,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 	}
 	ctx := &StatementCtx{
 		Global:     global,
-		Store:      Store{},
+		Store:      p.Store,
 		Ctx:        p.Ctx,
 		W:          w,
 		Components: v.components,
@@ -326,8 +333,18 @@ func NewChanSpan() *ChanSpan {
 }
 
 type RenderParam struct {
-	// 本次渲染的全局变量, 在所有组件中都有效
+	// 声明本次渲染的全局变量, 和vpl.Global()功能类似, 在所有组件中都有效.
+	// 可以用来存放诸如版本号/作者等全部组件都可能需要访问的数据, 还可以存放方法.
+	// Global设置的值会覆盖vpl.Global()设置的值.
+	//
+	// Q: 如何区分应该使用RenderParam.Global设置全局变量还是vpl.Global()设置全局变量?
+	// A:
+	//  根据这个"全局"变量的真正范围而定.
+	//  如果这个变量是"整个程序"的全局变量, 如一个全局方法, 那么它应该使用vpl.Global()设置
+	//  如果这个变量是"这一次渲染过程中"的全局变量, 如在渲染每个页面时的页面ID, 那么它应该使用RenderParam.Global设置.
 	Global map[string]interface{}
+	// 用于在整个运行环境共享变量, 如在一个方法/指令中读取另一个方法/指令里存储的数据
+	Store Store
 
 	Ctx   context.Context
 	Props *Props

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
-	"github.com/zbysir/vpl/internal/js"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -37,12 +36,18 @@ func TestFunc(t *testing.T) {
 				Txt  string
 			}{{
 				Name: "main",
-				Txt:  `appendName: {{appendName('z', 'bysir')}}`,
+				Txt:  `appendName: {{appendName('z', 'bysir')}} | fullName: {{fullName}} {{setVar('fullName', fullName)}} | getVar: {{getVar('fullName')}}`,
 			}},
 			Output: "output/%s.html",
 			Checker: func(html string) error {
-				if !strings.Contains(html, "z|bysir") {
-					return errors.New(fmt.Sprintf("want zbysir, but: %+v", html))
+				if !strings.Contains(html, "appendName: z|bysir") {
+					return errors.New("方法返回有误")
+				}
+				if !strings.Contains(html, "fullName: z|bysir") {
+					return errors.New("方法设置Scope有误")
+				}
+				if !strings.Contains(html, "getVar: z|bysir") {
+					return errors.New("方法设置Store有误")
 				}
 
 				return nil
@@ -63,15 +68,23 @@ func TestFunc(t *testing.T) {
 			}
 
 			vue.Global("author", "bysir")
+			vue.Function("appendName", func(ctx *vpl.RenderCtx, args ...interface{}) interface{} {
+				fullName := fmt.Sprintf("%s|%s", args[0], args[1])
+				ctx.Scope.Set("fullName", fullName)
+				return fullName
+			})
+			vue.Function("setVar", func(ctx *vpl.RenderCtx, args ...interface{}) interface{} {
+				ctx.Store.Set(args[0].(string), args[1])
+				return ""
+			})
+			vue.Function("getVar", func(ctx *vpl.RenderCtx, args ...interface{}) interface{} {
+				x, _ := ctx.Store.Get(args[0].(string))
+				return x
+			})
 
 			t.Logf("run....")
 
 			props := vpl.NewProps()
-			props.AppendMap(map[string]interface{}{
-				"appendName": js.Function(func(args ...interface{}) interface{} {
-					return fmt.Sprintf("%s|%s", args[0], args[1])
-				}),
-			})
 			var html string
 			var err error
 			if c.IndexComponent != "" {
@@ -79,12 +92,14 @@ func TestFunc(t *testing.T) {
 					Global: nil,
 					Ctx:    context.Background(),
 					Props:  props,
+					Store:  vpl.MapStore{},
 				})
 			} else {
 				html, err = vue.RenderTpl(c.IndexTpl, &vpl.RenderParam{
 					Global: nil,
 					Ctx:    context.Background(),
 					Props:  props,
+					Store:  vpl.MapStore{},
 				})
 			}
 

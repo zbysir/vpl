@@ -1,4 +1,4 @@
-package js
+package vpl
 
 import (
 	"encoding/json"
@@ -6,11 +6,10 @@ import (
 	"github.com/robertkrimen/otto/ast"
 	"github.com/robertkrimen/otto/parser"
 	"github.com/robertkrimen/otto/token"
-	"html"
 	"strconv"
 )
 
-func CompileJS(code string) (node ast.Node, err error) {
+func compileJS(code string) (node ast.Node, err error) {
 	// 用括号包裹的原因是让"{x: 1}"这样的语法解析成对象, 而不是label
 	code = "(" + code + ")"
 	p, err := parser.ParseFile(nil, "", code, 0)
@@ -22,19 +21,15 @@ func CompileJS(code string) (node ast.Node, err error) {
 	return p.Body[0], nil
 }
 
-type DataGetter interface {
-	Get(k string) interface{}
-}
-
-func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error) {
+func runJsExpression(node ast.Node, ctx *RenderCtx) (r interface{}, err error) {
 	switch t := node.(type) {
 	case *ast.ExpressionStatement:
-		return RunJsExpression(t.Expression, scope)
+		return runJsExpression(t.Expression, ctx)
 	case *ast.Identifier:
-		return scope.Get(t.Name), nil
+		return ctx.Scope.Get(t.Name), nil
 	case *ast.DotExpression:
 		// a.b
-		left, err := RunJsExpression(t.Left, scope)
+		left, err := runJsExpression(t.Left, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +38,7 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 		return r, nil
 	case *ast.BracketExpression:
 		// a[b]
-		left, err := RunJsExpression(t.Left, scope)
+		left, err := runJsExpression(t.Left, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +50,7 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 			key = m.Value
 		default:
 			// a[b+c]
-			v, err := RunJsExpression(t.Member, scope)
+			v, err := runJsExpression(t.Member, ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -74,11 +69,11 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 	case *ast.NullLiteral:
 		return nil, nil
 	case *ast.BinaryExpression:
-		left, err := RunJsExpression(t.Left, scope)
+		left, err := runJsExpression(t.Left, ctx)
 		if err != nil {
 			return nil, err
 		}
-		right, err := RunJsExpression(t.Right, scope)
+		right, err := runJsExpression(t.Right, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +108,7 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 		// 一元运算符
 		// -1
 		// !b
-		arg, err := RunJsExpression(t.Operand, scope)
+		arg, err := runJsExpression(t.Operand, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +138,7 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 				panic(fmt.Sprintf("bad Value kind of ObjectLiteral: %v", v.Kind))
 			}
 
-			val, err := RunJsExpression(v.Value, scope)
+			val, err := runJsExpression(v.Value, ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -152,23 +147,23 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 		return mp, nil
 	case *ast.CallExpression:
 		// fun(1,2,3, ...)
-		funcName, err := RunJsExpression(t.Callee, scope)
+		funcName, err := runJsExpression(t.Callee, ctx)
 		if err != nil {
 			return nil, err
 		}
 
 		args := make([]interface{}, len(t.ArgumentList))
 		for i, v := range t.ArgumentList {
-			args[i], err = RunJsExpression(v, scope)
+			args[i], err = runJsExpression(v, ctx)
 			if err != nil {
 				return nil, err
 			}
 		}
-		return interfaceToFunc(funcName)(args...), nil
+		return interfaceToFunc(funcName)(ctx, args...), nil
 	case *ast.ArrayLiteral:
 		args := make([]interface{}, len(t.Value))
 		for i, v := range t.Value {
-			args[i], err = RunJsExpression(v, scope)
+			args[i], err = runJsExpression(v, ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -176,15 +171,15 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 		return args, nil
 	case *ast.ConditionalExpression:
 		// 三元运算
-		consequent, err := RunJsExpression(t.Consequent, scope)
+		consequent, err := runJsExpression(t.Consequent, ctx)
 		if err != nil {
 			return nil, err
 		}
-		alternate, err := RunJsExpression(t.Alternate, scope)
+		alternate, err := runJsExpression(t.Alternate, ctx)
 		if err != nil {
 			return nil, err
 		}
-		test, err := RunJsExpression(t.Test, scope)
+		test, err := runJsExpression(t.Test, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +191,7 @@ func RunJsExpression(node ast.Node, scope DataGetter) (r interface{}, err error)
 		}
 
 	default:
-		panic(fmt.Sprintf("bad type %T for RunJsExpression", t))
+		panic(fmt.Sprintf("bad type %T for runJsExpression", t))
 		//bs, _ := json.Marshal(t)
 		//log.Panicf("%s", bs)
 	}
@@ -250,17 +245,13 @@ func interfaceToStr(s interface{}) (d string) {
 	case int64:
 		d = strconv.FormatInt(a, 10)
 	case float64:
-		d = strconv.FormatFloat(a, 'f', 10, 64)
+		d = strconv.FormatFloat(a, 'f', -1, 64)
 	default:
 		bs, _ := json.Marshal(a)
 		d = string(bs)
 	}
 
 	return
-}
-
-func escape(src string) string {
-	return html.EscapeString(src)
 }
 
 // 字符串false,0 会被认定为false
@@ -349,19 +340,19 @@ func interfaceToFunc(s interface{}) (d Function) {
 	}
 
 	switch a := s.(type) {
-	case func(args ...interface{}) interface{}:
+	case func(*RenderCtx, ...interface{}) interface{}:
 		return a
 	case Function:
 		return a
 	default:
-		panic(a)
+		panic(fmt.Sprintf("bad Type of func: %T", a))
 		return emptyFunc
 	}
 }
 
-type Function func(args ...interface{}) interface{}
+type Function func(ctx *RenderCtx, args ...interface{}) interface{}
 
-func emptyFunc(args ...interface{}) interface{} {
+func emptyFunc(ctx *RenderCtx, args ...interface{}) interface{} {
 	if len(args) != 0 {
 		return args[0]
 	}
