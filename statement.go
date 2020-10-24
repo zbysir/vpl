@@ -63,6 +63,9 @@ func (s *Scope) Extend(data map[string]interface{}) *Scope {
 // 设置暂时只支持在当前作用域设置变量
 // 避免对上层变量造成副作用
 func (s *Scope) Set(k string, v interface{}) {
+	if s.Value == nil {
+		s.Value = map[string]interface{}{}
+	}
 	s.Value[k] = v
 }
 
@@ -334,23 +337,6 @@ type vBindC struct {
 	val expression
 }
 
-func (v *vBindC) Exec(ctx *RenderCtx) *Props {
-	if v == nil {
-		return nil
-	}
-	b := v.val.Exec(ctx)
-	switch t := b.(type) {
-	case map[string]interface{}:
-		pr := NewProps()
-		pr.AppendMap(t)
-		return pr
-	case *Props:
-		return t
-	default:
-		return NewProps()
-	}
-}
-
 func (v *vBindC) execTo(ctx *RenderCtx, ps *Props) {
 	if v == nil {
 		return
@@ -359,9 +345,12 @@ func (v *vBindC) execTo(ctx *RenderCtx, ps *Props) {
 	switch t := b.(type) {
 	case map[string]interface{}:
 		ps.AppendMap(t)
+	case skipMarshalMap:
+		ps.AppendMap(t)
 	case *Props:
 		ps.appendProps(t)
 	default:
+		panic(fmt.Sprintf("bad Type of Vbind: %T", v.val))
 	}
 }
 
@@ -557,6 +546,11 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	}
 
 	props.ForEach(func(index int, k string, v interface{}) {
+		// 跳过scope内置的$props字段
+		if k == "$props" {
+			return
+		}
+
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
 		}
@@ -980,7 +974,7 @@ func (s *SlotsC) marge(x *SlotsC) {
 
 	if x.NamedSlot != nil {
 		if s.NamedSlot == nil {
-			s.NamedSlot = map[string]*vSlotC{}
+			s.NamedSlot = make(map[string]*vSlotC, len(x.NamedSlot))
 		}
 		for k, xs := range x.NamedSlot {
 			s.NamedSlot[k] = xs
@@ -1029,6 +1023,9 @@ type Slots struct {
 func (s *Slots) Get(key string) *Slot {
 	if s == nil {
 		return nil
+	}
+	if key == "default" {
+		return s.Default
 	}
 	return s.NamedSlot[key]
 }
@@ -1294,13 +1291,16 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 				}
 
 				// 子集 作为default slot
-				slot := &SlotsC{
-					Default: &vSlotC{
-						Name:     "default",
-						propsKey: "",
-						Children: childStatement,
-					},
-					NamedSlot: nil,
+				var slots *SlotsC
+				if childStatement != nil {
+					slots = &SlotsC{
+						Default: &vSlotC{
+							Name:     "default",
+							propsKey: "",
+							Children: childStatement,
+						},
+						NamedSlot: nil,
+					}
 				}
 
 				sg.Append(&tagStatement{
@@ -1312,7 +1312,7 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 						StaticClass: v.Class,
 						StaticStyle: v.Style,
 						Directives:  dir,
-						Slots:       slot,
+						Slots:       slots,
 						VBind:       vbind,
 					},
 				})

@@ -26,6 +26,6 @@ func TestToVue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ioutil.WriteFile("vue.txt", []byte(vn.NicePrint(true, 0)), os.ModePerm)
+	ioutil.WriteFile("parsevue_output.txt", []byte(vn.NicePrint(true, 0)), os.ModePerm)
 
 }

@@ -62,8 +62,8 @@ func TestComponent(t *testing.T) {
 		<li>End</li>
 	</ul>
 </div>
-{{$props}}
-author: {{author}}
+<!-- $props由于存在循环引用的问题，不支持打印 -->
+{{$props}}author: {{author}}
 </body>
 </html>
 `,
@@ -121,45 +121,6 @@ author: {{author}}
 
 				return nil
 			},
-		},
-		{
-			// 测试 slot
-			// - 具名插槽
-			// - 备选
-			// - 插槽作用域
-			Name: "slot",
-			// https://cn.vuejs.org/v2/api/#v-bind
-			// 通过 $props 将父组件的 props 一起传给子组件
-			// 或者通过 $scope 将父组件中所有变量一起传递给子组件
-			IndexTpl: "<main v-bind='$props'></main>",
-			Tpl: []struct {
-				Name string
-				Txt  string
-			}{
-				{
-					Name: "main",
-					Txt: `
-<div :id="id">
-	<Infos :infos="infos">
-		<!-- SlotStatement -->
-		<h1 v-slot:title="props">({{infos.length}})条信息 {{props.title}}:</h1>
-	</Infos>
-</div>`,
-				},
-				{
-					Name: "Infos",
-					Txt: `
-<slot>默认备选</slot>
-<slot name="title" :title="'Infos'"></slot>
-<slot name="title2">标题2 备选</slot>
-<template v-for="item in infos">
-	<li :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
-</template>
-{{author}}
-`,
-				},
-			},
-			Output: "output/%s.html",
 		},
 		{
 			// 测试 单标签

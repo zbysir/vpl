@@ -1,0 +1,39 @@
+ROOT
+ <!doctype html>
+ <html []>
+  <head []>
+   <meta [{Key:charset Value:utf-8}]>
+   123123
+   <title []>
+    Pagser Title
+   <meta [{Key:name Value:keywords} {Key:content Value:golang,pagser,goquery,html,page,parser,colly}]>
+  <body []>
+   <!-- comment -->
+   <h1 []>
+    H1 Pagser Example
+    <span []>
+     span
+   <Br []>
+   <img []>
+   <input []>
+   123123
+   <input []>
+   <div []>
+    bad close
+    <div [{Key:class Value:navlink}]>
+     <div [{Key:class Value:container}]>
+      <ul [{Key:class Value:clearfix}]>
+       <li [{Key::id Value:} {Key:class Value:tt} {Key:data-b Value:} {Key:dataC Value:}]>
+        <a [{Key:href Value:/}]>
+         Index
+       <li [{Key:@id Value:2}]>
+        <a [{Key:href Value:/list/web} {Key:title Value:web site}]>
+         Web page
+       <li [{Key:id Value:3}]>
+        <a [{Key:href Value:/list/pc} {Key:title Value:pc page}]>
+         Pc Page
+       <li [{Key:id Value:4}]>
+        <a [{Key:href Value:/list/mobile} {Key:title Value:mobile page}]>
+         Mobile Page
+    <select []>
+     <slot []>

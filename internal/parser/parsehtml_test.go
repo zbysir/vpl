@@ -41,14 +41,13 @@ func TestParse(t *testing.T) {
 	</body>
 	</html>
 	`
-	//r:=buffer.NewReader([]byte(rawPageHtml))
 
 	nt, err := ParseHtml(rawPageHtml)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ioutil.WriteFile("1.txt", []byte(nt.NicePrint(0)), os.ModePerm)
+	ioutil.WriteFile("parsehtml_output.txt", []byte(nt.NicePrint(0)), os.ModePerm)
 
 	t.Logf("%s", nt.NicePrint(0))
 }

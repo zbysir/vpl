@@ -53,12 +53,15 @@ func New() *Vpl {
 				if exist {
 					slotName, _ = attr.(string)
 				}
-				if slotName == "" {
-					slotName = "default"
-				}
+				var slot *Slot
 
 				p := o.Parent
-				slot := p.Slots.Get(slotName)
+				if slotName == "" {
+					slot = p.Slots.Default
+				} else {
+					slot = p.Slots.Get(slotName)
+				}
+
 				if slot == nil {
 					// 备选内容
 					fullback := o.Slots.Default

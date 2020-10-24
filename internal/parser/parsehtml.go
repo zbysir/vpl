@@ -152,6 +152,14 @@ func (p *Node) NicePrint(lev int) string {
 		s += fmt.Sprintf("%s\n", p.Text)
 	case DoctypeNode:
 		s += fmt.Sprintf("%s\n", p.Text)
+	case RootNode:
+		s += fmt.Sprintf("%s\n", "ROOT")
+
+		for _, v := range p.Child {
+			s += fmt.Sprintf("%s", v.NicePrint(lev+1))
+		}
+	default:
+		panic(fmt.Sprintf("uncased type of Node: %v", p.NodeType))
 	}
 
 	return s
