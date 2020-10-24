@@ -377,6 +377,15 @@ func ShouldLookInterface(data interface{}, keys ...string) (desc interface{}, ro
 		rootExist = true
 		desc, _, exist = ShouldLookInterface(c, keys[1:]...)
 		return
+	case skipMarshalMap:
+		// 解决循环引用的map
+		c, ok := data[currKey]
+		if !ok {
+			return
+		}
+		rootExist = true
+		desc, _, exist = ShouldLookInterface(c, keys[1:]...)
+		return
 
 	case []interface{}:
 		// 数组

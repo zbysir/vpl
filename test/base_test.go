@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
+	"github.com/zbysir/vpl/internal/lib/log"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -292,8 +293,71 @@ type data struct {
 	Msg string  `json:"msg"`
 }
 
+func TestRender(t *testing.T) {
+	vue := vpl.New()
+	t.Logf("compile....")
+	err := vue.ComponentTxt("main", `
+  <div v-bind:class="{'a': true}" class="b">
+	<h1 :a='1'></h1>
+    <div v-for="item in data.c" >
+      {{item.msg}} {{$props.a}}
+    </div>
+  </div>
+`)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var ii interface{}
+	// 生成10000个数据
+	index := 0
+	var ds []*data
+	for i := 0; i < 1; i++ {
+		ds = append(ds, &data{
+			C:   nil,
+			Msg: fmt.Sprintf("%d", index),
+		})
+		index++
+	}
+
+	d := data{
+		C:   ds,
+		Msg: "1",
+	}
+	bs, _ := json.Marshal(d)
+	json.Unmarshal(bs, &ii)
+
+	props := vpl.NewProps()
+	props.AppendMap(map[string]interface{}{
+		"data": ii,
+		"a":    1,
+	})
+
+	log.Infof("run")
+
+	html, err := vue.RenderComponent("main", &vpl.RenderParam{
+		Global: nil,
+		Ctx:    context.Background(),
+		Props:  props,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("%+v", html)
+}
+
 // 100	539,790 ns/op
 // 10000 53,219,775 ns/op
+// -- 2020-10-23
+// 100 565072 ns/op
+// -- 2020-10-24 删除掉多余的NewProps()
+// 100 511415 ns/op	  482172 B/op	    6983 allocs/op
+// -- 2020-10-24 删除掉copyMap
+// 453217 ns/op	  402995 B/op	    6177 allocs/op
+// -- 2020-10-24 使用pool管理RenderCtx
+// 474725 ns/op	  390092 B/op	    5774 allocs/op
 func BenchmarkRender(b *testing.B) {
 	b.ReportAllocs()
 	vue := vpl.New()

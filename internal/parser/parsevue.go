@@ -34,7 +34,7 @@ func (p Styles) ToAttr() string {
 		}
 		st.WriteString(k + ": " + v + ";")
 	}
-	return fmt.Sprintf(`style="%s"`, st.String())
+	return `style="` + st.String() + `"`
 }
 
 func (p Styles) Add(key string, val string) {

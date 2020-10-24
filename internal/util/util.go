@@ -47,7 +47,7 @@ func CopyMap(data map[string]interface{}) map[string]interface{} {
 	if data == nil {
 		return nil
 	}
-	m := map[string]interface{}{}
+	m := make(map[string]interface{}, len(data))
 	for k, v := range data {
 		m[k] = v
 	}

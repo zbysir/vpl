@@ -20,7 +20,7 @@ func getClassFromProps(classProps interface{}) parser.Class {
 	case string:
 		cs = []string{t}
 	case map[string]interface{}:
-		var c []string
+		c := make([]string, 0, len(t)/2)
 		for k, v := range t {
 			if util.InterfaceToBool(v) {
 				c = append(c, k)
@@ -112,4 +112,11 @@ func NicePrintStatement(st Statement, lev int) string {
 	}
 
 	return s
+}
+
+// 不支持json序列化的map, 解决循环引用时Marshal报错的问题
+type skipMarshalMap map[string]interface{}
+
+func (s skipMarshalMap) MarshalJSON() ([]byte, error) {
+	return nil, nil
 }

@@ -51,7 +51,7 @@ func New() *Vpl {
 				slotName := ""
 				attr, exist := o.Props.Get("name")
 				if exist {
-					slotName, _ = attr.Val.(string)
+					slotName, _ = attr.(string)
 				}
 				if slotName == "" {
 					slotName = "default"
@@ -90,7 +90,12 @@ func New() *Vpl {
 				go func() {
 					ctx := ctx.Clone()
 					ctx.W = NewListWriter()
-					err := o.Slots.Default().ExecSlot(ctx, &ExecSlotOptions{})
+					child := o.Slots.Default()
+					if child == nil {
+						s.Done("")
+						return
+					}
+					err := child.ExecSlot(ctx, &ExecSlotOptions{})
 					if err != nil {
 						s.Done(fmt.Sprintf("err: %+v", err))
 					} else {
@@ -184,7 +189,7 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 	// 将所有props放入scope
 	scope := ctx.NewScope().Extend(propsMap)
 	// copyMap是为了让$props和scope的value不相等, 否则在打印$props就会出现循环引用.
-	scope.Set("$props", util.CopyMap(propsMap))
+	scope.Set("$props", skipMarshalMap(propsMap))
 
 	err = statement.Exec(ctx, &StatementOptions{
 		Slots:     nil,

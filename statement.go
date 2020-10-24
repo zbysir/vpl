@@ -9,6 +9,7 @@ import (
 	"github.com/zbysir/vpl/internal/parser"
 	"github.com/zbysir/vpl/internal/util"
 	"strings"
+	"sync"
 )
 
 // 执行每一个块的上下文
@@ -67,7 +68,6 @@ func (s *Scope) Set(k string, v interface{}) {
 
 // 在渲染中的上下文, 用在function和directive
 type RenderCtx struct {
-	//W     Writer // 用于写入渲染结果
 	Scope *Scope // 当前作用域, 用于向当前作用域声明一个值
 	Store Store  // 用于共享数据, 此Store是RenderParam中传递的Store
 }
@@ -96,10 +96,18 @@ func (r propsC) exec(ctx *RenderCtx) *Props {
 		return nil
 	}
 	pr := NewProps()
-	for _, p := range r {
-		pr.Append(p.Key, p.exec(ctx).Val)
-	}
+	r.execTo(ctx, pr)
 	return pr
+}
+
+func (r propsC) execTo(ctx *RenderCtx, ps *Props) {
+	if len(r) == 0 {
+		return
+	}
+	for _, p := range r {
+		ps.Append(p.Key, p.exec(ctx).Val)
+	}
+	return
 }
 
 func (r *propC) exec(ctx *RenderCtx) *Prop {
@@ -117,21 +125,21 @@ type Prop struct {
 }
 
 type Props struct {
-	orderKey []string         // 在生成attr时会用到顺序
-	data     map[string]*Prop // 存储map有利于快速取值
+	orderKey []string               // 在生成attr时会用到顺序
+	data     map[string]interface{} // 存储map有利于快速取值
 }
 
 func NewProps() *Props {
 	return &Props{
 		// 减少扩展slice的cpu消耗
 		orderKey: make([]string, 0, 0),
-		data:     map[string]*Prop{},
+		data:     map[string]interface{}{},
 	}
 }
 
-func (r *Props) ForEach(cb func(index int, r *Prop)) {
+func (r *Props) ForEach(cb func(index int, k string, v interface{})) {
 	for index, k := range r.orderKey {
-		cb(index, r.data[k])
+		cb(index, k, r.data[k])
 	}
 	return
 }
@@ -140,25 +148,16 @@ func (r *Props) ToMap() map[string]interface{} {
 	if r == nil {
 		return nil
 	}
-	m := make(map[string]interface{})
-	for k, p := range r.data {
-		m[k] = p.Val
-	}
-	return m
+	return r.data
 }
 
 func (r *Props) Append(k string, v interface{}) {
-	o, exist := r.data[k]
-	if exist {
-		o.Val = v
-	} else {
-		r.data[k] = &Prop{
-			Key: k,
-			Val: v,
-		}
-
+	_, exist := r.data[k]
+	if !exist {
 		r.orderKey = append(r.orderKey, k)
 	}
+
+	r.data[k] = v
 }
 
 // 无序添加多个props
@@ -176,12 +175,13 @@ func (r *Props) appendProps(ps *Props) {
 	if ps == nil {
 		return
 	}
-	ps.ForEach(func(index int, p *Prop) {
-		r.Append(p.Key, p.Val)
+
+	ps.ForEach(func(index int, k string, v interface{}) {
+		r.Append(k, v)
 	})
 }
 
-func (r *Props) Get(key string) (*Prop, bool) {
+func (r *Props) Get(key string) (interface{}, bool) {
 	v, exist := r.data[key]
 	return v, exist
 }
@@ -284,6 +284,7 @@ type tagStruct struct {
 	Slots      SlotsC
 }
 
+// 编译时的指令
 type directiveC struct {
 	Name  string     // v-animate
 	Value expression // {'a': 1}
@@ -327,16 +328,31 @@ func (v *vBindC) Exec(ctx *RenderCtx) *Props {
 	if v == nil {
 		return nil
 	}
-	pr := NewProps()
 	b := v.val.Exec(ctx)
 	switch t := b.(type) {
 	case map[string]interface{}:
+		pr := NewProps()
 		pr.AppendMap(t)
+		return pr
 	case *Props:
 		return t
+	default:
+		return NewProps()
 	}
+}
 
-	return pr
+func (v *vBindC) execTo(ctx *RenderCtx, ps *Props) {
+	if v == nil {
+		return
+	}
+	b := v.val.Exec(ctx)
+	switch t := b.(type) {
+	case map[string]interface{}:
+		ps.AppendMap(t)
+	case *Props:
+		ps.appendProps(t)
+	default:
+	}
 }
 
 // 表达式, 所有js表达式都会被预编译成为expression
@@ -422,17 +438,17 @@ func (s *StrStatement) AppendStr(str string) {
 	s.Str += str
 }
 
-// tag开始块
+// tag块
 type tagStatement struct {
 	tag       string
 	tagStruct tagStruct
 }
 
 func execDirectives(ds directivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
-	rCtx := &RenderCtx{
-		Scope: scope,
-		Store: ctx.Store,
-	}
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = scope
+	defer ctxPool.Put(rCtx)
 
 	for _, v := range ds {
 		val := v.Value.Exec(rCtx)
@@ -463,10 +479,10 @@ type NodeData struct {
 }
 
 func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	rCtx := &RenderCtx{
-		Scope: o.Scope,
-		Store: ctx.Store,
-	}
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = o.Scope
+	defer ctxPool.Put(rCtx)
 
 	// 将tagStruct根据scope变量渲染出属性
 	var attrs strings.Builder
@@ -498,14 +514,14 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	props := NewProps()
 	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
 	if t.tagStruct.VBind != nil {
-		props.appendProps(t.tagStruct.VBind.Exec(rCtx))
+		t.tagStruct.VBind.execTo(rCtx, props)
 	}
 
 	if len(t.tagStruct.Props) != 0 {
-		props.appendProps(t.tagStruct.Props.exec(rCtx))
+		t.tagStruct.Props.execTo(rCtx, props)
 	}
 
-	slotsR := t.tagStruct.Slots.WrapScope(o.Scope)
+	slots := t.tagStruct.Slots.WrapScope(o.Scope)
 
 	// 执行指令
 	// 指令可以修改scope/props/style/class/children
@@ -514,7 +530,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			Props: props,
 			Class: &cla,
 			Style: &sty,
-			Slots: &slotsR,
+			Slots: &slots,
 		})
 	}
 
@@ -530,16 +546,16 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		attrs.WriteString(sty.ToAttr())
 	}
 
-	props.ForEach(func(index int, p *Prop) {
+	props.ForEach(func(index int, k string, v interface{}) {
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
 		}
-		attrs.WriteString(p.Key)
+		attrs.WriteString(k)
 
-		if p.Val != nil {
+		if v != nil {
 			attrs.WriteString(`="`)
 
-			switch v := p.Val.(type) {
+			switch v := v.(type) {
 			case string:
 				attrs.WriteString(v)
 			default:
@@ -549,18 +565,17 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		}
 	})
 
-	tagStart := "<" + t.tag
+	ctx.W.WriteString("<" + t.tag)
 
 	if attrs.Len() != 0 {
-		tagStart += " " + attrs.String()
+		ctx.W.WriteString(" ")
+		ctx.W.WriteString(attrs.String())
 	}
 
-	tagStart += ">"
-
-	ctx.W.WriteString(tagStart)
+	ctx.W.WriteString(">")
 
 	// 子节点
-	children := slotsR.Get("default")
+	children := slots.Default()
 	if children != nil {
 		err := children.ExecSlot(ctx, nil)
 		if err != nil {
@@ -609,10 +624,10 @@ type elseStatement struct {
 }
 
 func (i *ifStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	rCtx := &RenderCtx{
-		Scope: o.Scope,
-		Store: ctx.Store,
-	}
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = o.Scope
+	defer ctxPool.Put(rCtx)
 	r := i.condition.Exec(rCtx)
 	if util.InterfaceToBool(r) {
 		err := i.ChildStatement.Exec(ctx, o)
@@ -652,15 +667,18 @@ type forStatement struct {
 }
 
 func (f forStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	arr := f.Array.Exec(&RenderCtx{
-		Scope: o.Scope,
-		Store: ctx.Store,
-	})
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = o.Scope
+	defer ctxPool.Put(rCtx)
 
-	for index, item := range util.Interface2Slice(arr) {
+	arr := f.Array.Exec(rCtx)
+
+	array := util.Interface2Slice(arr)
+	for index := range array {
 		scope := o.Scope.Extend(map[string]interface{}{
 			f.IndexKey: index,
-			f.ItemKey:  item,
+			f.ItemKey:  array[index],
 		})
 
 		err := f.ChildChunks.Exec(ctx, &StatementOptions{
@@ -755,24 +773,22 @@ type ComponentStatement struct {
 // 根据组件attr拼接出新的scope, 再执行组件
 // 处理slot作用域
 func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	rCtx := &RenderCtx{
-		Scope: o.Scope,
-		Store: ctx.Store,
-	}
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = o.Scope
+	defer ctxPool.Put(rCtx)
+
 	// 计算Props
-	propsR := NewProps()
+	props := NewProps()
 	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
 	if c.ComponentStruct.VBind != nil {
-		propsR.appendProps(c.ComponentStruct.VBind.Exec(rCtx))
+		c.ComponentStruct.VBind.execTo(rCtx, props)
 	}
 
 	// 如果还传递了其他props, 则覆盖
 	if c.ComponentStruct.Props != nil {
-		propsR.appendProps(c.ComponentStruct.Props.exec(rCtx))
+		c.ComponentStruct.Props.execTo(rCtx, props)
 	}
-
-	propClass := c.ComponentStruct.PropClass.exec(rCtx)
-	propStyle := c.ComponentStruct.PropClass.exec(rCtx)
 
 	// 处理slot作用域
 	slots := c.ComponentStruct.Slots.WrapScope(o.Scope)
@@ -800,19 +816,26 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	// 指令可以修改scope/props/style/class/children
 	if len(c.ComponentStruct.Directives) != 0 {
 		execDirectives(c.ComponentStruct.Directives, ctx, o.Scope, &NodeData{
-			Props: propsR,
+			Props: props,
 			Class: &o.StaticClass,
 			Style: &o.StaticStyle,
 			Slots: &slots,
 		})
 	}
 
+	//json.Marshal()
+
 	// 运行组件应该重新使用新的scope
 	// 和vue不同的是, props只有在子组件中申明才能在子组件中使用, 而vtpl不同, 它将所有props放置到变量域中.
-	props := propsR.ToMap()
-	scope := ctx.NewScope().Extend(props)
+	propsMap := props.ToMap()
+	scope := ctx.NewScope().Extend(propsMap)
 	// copyMap是为了让$props和scope的value不相等, 否则在打印$props就会出现循环引用.
-	scope.Set("$props", util.CopyMap(props))
+
+	//scope.Set("$props", propsMap)
+	scope.Set("$props", skipMarshalMap(propsMap))
+
+	propClass := c.ComponentStruct.PropClass.exec(rCtx)
+	propStyle := c.ComponentStruct.PropClass.exec(rCtx)
 
 	return cp.Exec(ctx, &StatementOptions{
 		// 此组件在声明时拥有的所有slots
@@ -822,7 +845,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 		// - root组件使用props转为attr,
 		// - slot组件收集所有的props实现作用域插槽(https://cn.vuejs.org/v2/guide/components-slots.html#%E4%BD%9C%E7%94%A8%E5%9F%9F%E6%8F%92%E6%A7%BD)
 		// <slot :user="user">
-		Props:     propsR,
+		Props:     props,
 		PropClass: propClass,
 		PropStyle: propStyle,
 
@@ -861,6 +884,10 @@ type ExecSlotOptions struct {
 }
 
 func (s *Slot) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
+	if s.Children == nil {
+		return nil
+	}
+
 	// 将申明时的scope和传递的slot-props合并
 	scope := s.ScopeWhenDeclaration
 	if scope == nil {
@@ -883,11 +910,25 @@ type mustacheStatement struct {
 	exp expression
 }
 
+var ctxPool sync.Pool
+
+func init() {
+	ctxPool = sync.Pool{New: func() interface{} {
+		return &RenderCtx{}
+	}}
+}
+
 func (i *mustacheStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	r := i.exp.Exec(&RenderCtx{
-		Scope: o.Scope,
-		Store: ctx.Store,
-	})
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = o.Scope
+	defer ctxPool.Put(rCtx)
+
+	//rCtx := &RenderCtx{
+	//	Store: ctx.Store, Scope: o.Scope,
+	//}
+
+	r := i.exp.Exec(rCtx)
 
 	ctx.W.WriteString(util.InterfaceToStr(r, true))
 	return nil
@@ -900,10 +941,12 @@ type rawHtmlStatement struct {
 }
 
 func (i *rawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
-	r := i.exp.Exec(&RenderCtx{
-		Scope: o.Scope,
-		Store: ctx.Store,
-	})
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = o.Scope
+	defer ctxPool.Put(rCtx)
+
+	r := i.exp.Exec(rCtx)
 
 	ctx.W.WriteString(util.InterfaceToStr(r, false))
 	return nil
@@ -918,7 +961,7 @@ func (s SlotsC) WrapScope(o *Scope) (sr Slots) {
 	if len(s) == 0 {
 		return nil
 	}
-	sr = Slots{}
+	sr = make(Slots, len(s))
 	for k, v := range s {
 		sr[k] = &Slot{
 			Name:                 v.Name,
