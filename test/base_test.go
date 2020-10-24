@@ -353,11 +353,13 @@ func TestRender(t *testing.T) {
 // -- 2020-10-23
 // 100 565072 ns/op
 // -- 2020-10-24 删除掉多余的NewProps()
-// 100 511415 ns/op	  482172 B/op	    6983 allocs/op
+// 511415 ns/op	  482172 B/op	    6983 allocs/op(Win)
 // -- 2020-10-24 删除掉copyMap
-// 453217 ns/op	  402995 B/op	    6177 allocs/op
+// 453217 ns/op	  402995 B/op	    6177 allocs/op(Win)
 // -- 2020-10-24 使用pool管理RenderCtx
-// 474725 ns/op	  390092 B/op	    5774 allocs/op
+// 474725 ns/op	  390092 B/op	    5774 allocs/op(Win)
+// -- 2020-10-24 优化slot存储方式
+// 386870 ns/op	  339223 B/op	    5268 allocs/op(MAC)
 func BenchmarkRender(b *testing.B) {
 	b.ReportAllocs()
 	vue := vpl.New()

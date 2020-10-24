@@ -25,20 +25,19 @@ func TestSimpleNodeVue(t *testing.T) {
 
 	// 将会优化成另一个AST:
 	// <div class="c">Text</div>
-	// tagStart(div, {Props:[0xc00010f1a0] PropClass:<nil> PropStyle:<nil> VBind:<nil> StaticClass:[] StaticStyle:map[] Directives:[] Slots:map[]})
-	// Infos:
-	// tagStart(ul, {Props:[] PropClass:0xc00010f2f0 PropStyle:<nil> VBind:<nil> StaticClass:[] StaticStyle:map[] Directives:[] Slots:map[]})
-	// If(ifStart)
-	//  <li about="a">Start<span>span</span></li>
-	// ELSE
-	//  <li about="b">Not Start</li>
-	// FOR(item in infos)
-	//  tagStart(li, {Props:[0xc00010f560 0xc00010f5f0] PropClass:<nil> PropStyle:<nil> VBind:<nil> StaticClass:[] StaticStyle:map[] Directives:[] Slots:map[]})
-	//  {{item.label}}
-	//  :
-	//  {{item.value}}
-	//  </li>
-	// <li>End</li></ul></div>
+	// Tag(div, [id: id])
+	//   Infos:
+	//   Tag(ul, [])
+	//     If(ifStart)
+	//       <li about="a">Start<span>span</span></li>
+	//     Else
+	//       <li about="b">Not Start</li>
+	//     For(item in infos)
+	//       Tag(li, [id: item.id, key: item.id])
+	//         {{item.label}}
+	//         :
+	//         {{item.value}}
+	//     <li>End</li>
 
 	nt, err := parser.ParseHtml(rawPageHtml)
 	if err != nil {

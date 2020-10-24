@@ -71,42 +71,46 @@ func genAttrFromProps(props parser.Props) string {
 
 // 打印Statement, 方便调试
 func NicePrintStatement(st Statement, lev int) string {
-	s := strings.Repeat(" ", lev)
+	index := strings.Repeat(" ", lev*2)
 
+	s := ""
 	switch t := st.(type) {
 	case *StrStatement:
-		s += fmt.Sprintf("%s\n", t.Str)
+		s += fmt.Sprintf("%s%s\n", index, t.Str)
 	case *groupStatement:
 		s = ""
 		for _, v := range t.s {
 			s += fmt.Sprintf("%s", NicePrintStatement(v, lev))
 		}
 	case *ComponentStatement:
-		s += fmt.Sprintf("<%s>\n", t.ComponentKey)
-		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots["default"].Children, lev+1))
-		s += fmt.Sprintf("<%s/>\n", t.ComponentKey)
+		s += fmt.Sprintf("%s<%s>\n", index, t.ComponentKey)
+		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots.Default.Children, lev+1))
+		s += fmt.Sprintf("%s<%s/>\n", index, t.ComponentKey)
 	case *tagStatement:
-		s += fmt.Sprintf("TagStart(%s, %+v)\n", t.tag, t.tagStruct)
+		s += fmt.Sprintf("%sTag(%s, %+v)\n", index, t.tag, t.tagStruct.Props)
+
+		s += fmt.Sprintf("%s", NicePrintStatement(t.tagStruct.Slots.Default.Children, lev+1))
+
 	case *ifStatement:
-		s += fmt.Sprintf("If(%+v)\n", t.conditionCode)
+		s += fmt.Sprintf("%sIf(%+v)\n", index, t.conditionCode)
 		s += fmt.Sprintf("%s", NicePrintStatement(t.ChildStatement, lev+1))
 
 		for _, ef := range t.ElseIf {
 			if ef.conditionCode != "" {
-				s += fmt.Sprintf("ElseIf(%+v)\n", ef.conditionCode)
+				s += fmt.Sprintf("%sElseIf(%+v)\n", index, ef.conditionCode)
 			} else {
-				s += fmt.Sprintf("Else\n")
+				s += fmt.Sprintf("%sElse\n", index)
 			}
 
 			s += fmt.Sprintf("%s", NicePrintStatement(ef.ChildStatement, lev+1))
 		}
 	case *forStatement:
-		s += fmt.Sprintf("For(%s in %s)\n", t.ItemKey, t.ArrayKey)
+		s += fmt.Sprintf("%sFor(%s in %s)\n", index, t.ItemKey, t.ArrayKey)
 		s += fmt.Sprintf("%s", NicePrintStatement(t.ChildChunks, lev+1))
 	case *mustacheStatement:
-		s += fmt.Sprintf("{{%s}}\n", t.exp)
+		s += fmt.Sprintf("%s{{%s}}\n", index, t.exp)
 	case *rawHtmlStatement:
-		s += fmt.Sprintf("{{%s}}\n", t.exp)
+		s += fmt.Sprintf("%s{{%s}}\n", index, t.exp)
 	default:
 
 	}

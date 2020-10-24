@@ -119,7 +119,7 @@ func TestDirective(t *testing.T) {
 			v.Directive("js-set", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				bs, _ := json.Marshal(binding.Value)
 
-				(*nodeData.Slots)["default"] = &vpl.Slot{
+				nodeData.Slots.Default = &vpl.Slot{
 					Name:                 "",
 					Children:             &vpl.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
 					ScopeWhenDeclaration: &vpl.Scope{},

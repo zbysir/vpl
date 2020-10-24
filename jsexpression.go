@@ -127,7 +127,7 @@ func runJsExpression(node ast.Node, ctx *RenderCtx) (r interface{}, err error) {
 		}
 
 		// 对象, 翻译成map[string]interface{}
-		mp := map[string]interface{}{}
+		mp := make(map[string]interface{}, len(t.Value))
 		for _, v := range t.Value {
 			k := ""
 

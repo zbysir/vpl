@@ -90,6 +90,17 @@ type propC struct {
 
 type propsC []*propC
 
+// for nicePrint
+func (r propsC) String() string {
+	str := "["
+	for _, v := range r {
+		str += fmt.Sprintf("%+v: %v, ", v.Key, v.ValCode)
+	}
+	str = strings.TrimSuffix(str, ", ")
+	str += "]"
+	return str
+}
+
 // 执行编译之后的PropsC, 返回数值PropsR.
 func (r propsC) exec(ctx *RenderCtx) *Props {
 	if len(r) == 0 {
@@ -130,11 +141,7 @@ type Props struct {
 }
 
 func NewProps() *Props {
-	return &Props{
-		// 减少扩展slice的cpu消耗
-		orderKey: make([]string, 0, 0),
-		data:     map[string]interface{}{},
-	}
+	return &Props{}
 }
 
 func (r *Props) ForEach(cb func(index int, k string, v interface{})) {
@@ -152,6 +159,9 @@ func (r *Props) ToMap() map[string]interface{} {
 }
 
 func (r *Props) Append(k string, v interface{}) {
+	if r.data == nil {
+		r.data = map[string]interface{}{}
+	}
 	_, exist := r.data[k]
 	if !exist {
 		r.orderKey = append(r.orderKey, k)
@@ -281,7 +291,7 @@ type tagStruct struct {
 	StaticStyle parser.Styles
 
 	Directives directivesC
-	Slots      SlotsC
+	Slots      *SlotsC
 }
 
 // 编译时的指令
@@ -313,7 +323,7 @@ type ComponentStruct struct {
 
 	Directives directivesC
 	// 传递给这个组件的Slots
-	Slots SlotsC
+	Slots *SlotsC
 }
 
 // VBind 语法, 一次传递多个prop
@@ -530,7 +540,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			Props: props,
 			Class: &cla,
 			Style: &sty,
-			Slots: &slots,
+			Slots: slots,
 		})
 	}
 
@@ -575,7 +585,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	ctx.W.WriteString(">")
 
 	// 子节点
-	children := slots.Default()
+	children := slots.Default
 	if children != nil {
 		err := children.ExecSlot(ctx, nil)
 		if err != nil {
@@ -798,7 +808,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	if !exist {
 		ctx.W.WriteString(fmt.Sprintf(`<%s data-err="not found component">`, c.ComponentKey))
 
-		child := slots.Default()
+		child := slots.Default
 		if child != nil {
 			err := child.ExecSlot(ctx, &ExecSlotOptions{
 				SlotProps: nil,
@@ -819,7 +829,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 			Props: props,
 			Class: &o.StaticClass,
 			Style: &o.StaticStyle,
-			Slots: &slots,
+			Slots: slots,
 		})
 	}
 
@@ -953,37 +963,74 @@ func (i *rawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 }
 
 // https://cn.vuejs.org/v2/guide/components-slots.html
-// Slots 存放传递给组件的所有Slot, vue语法: <h1 v-slot:default="xxx"></h1>
-type SlotsC map[string]*vSlotC
+// Slots 存放传递给组件的所有Slot（默认与具名）, vue语法: <h1 v-slot:default="xxx"></h1>
+type SlotsC struct {
+	Default   *vSlotC
+	NamedSlot map[string]*vSlotC
+}
 
-// WrapScope 设置在slot声明时的scope, 用于在运行slot时使用声明slot时的scope
-func (s SlotsC) WrapScope(o *Scope) (sr Slots) {
-	if len(s) == 0 {
-		return nil
+func (s *SlotsC) marge(x *SlotsC) {
+	if x == nil {
+		return
 	}
-	sr = make(Slots, len(s))
-	for k, v := range s {
-		sr[k] = &Slot{
-			Name:                 v.Name,
-			propsKey:             v.propsKey,
-			Children:             v.Children,
-			ScopeWhenDeclaration: o,
+
+	if x.Default != nil {
+		s.Default = x.Default
+	}
+
+	if x.NamedSlot != nil {
+		if s.NamedSlot == nil {
+			s.NamedSlot = map[string]*vSlotC{}
+		}
+		for k, xs := range x.NamedSlot {
+			s.NamedSlot[k] = xs
 		}
 	}
-	return
 }
 
-type Slots map[string]*Slot
-
-func (s Slots) Default() *Slot {
-	return s.Get("default")
-}
-
-func (s Slots) Get(key string) *Slot {
+// WrapScope 设置在slot声明时的scope, 用于在运行slot时使用声明slot时的scope
+func (s *SlotsC) WrapScope(o *Scope) (sr *Slots) {
 	if s == nil {
 		return nil
 	}
-	return s[key]
+	if s.Default != nil {
+		sr = &Slots{
+			Default: &Slot{
+				Name:                 "default",
+				propsKey:             s.Default.propsKey,
+				Children:             s.Default.Children,
+				ScopeWhenDeclaration: o,
+			}}
+	}
+	if s.NamedSlot != nil {
+		if sr == nil {
+			sr = &Slots{}
+		}
+
+		sr.NamedSlot = make(map[string]*Slot, len(s.NamedSlot))
+		for k, v := range s.NamedSlot {
+			sr.NamedSlot[k] = &Slot{
+				Name:                 v.Name,
+				propsKey:             v.propsKey,
+				Children:             v.Children,
+				ScopeWhenDeclaration: o,
+			}
+		}
+	}
+
+	return
+}
+
+type Slots struct {
+	Default   *Slot // 大多数都是Default插槽，放入map里会有性能损耗，所以优化为单独一个字段
+	NamedSlot map[string]*Slot
+}
+
+func (s *Slots) Get(key string) *Slot {
+	if s == nil {
+		return nil
+	}
+	return s.NamedSlot[key]
 }
 
 func ParseHtmlToStatement(tpl string) (Statement, error) {
@@ -1004,7 +1051,7 @@ func ParseHtmlToStatement(tpl string) (Statement, error) {
 
 // 执行语句(组件/Tag)所需的参数
 type StatementOptions struct {
-	Slots Slots
+	Slots *Slots
 
 	// 渲染组件时, 组件上的props
 	// 如<Menu :data="data">
@@ -1116,8 +1163,8 @@ var htmlTag = map[string]struct{}{
 //   - 将连在一起的静态节点预渲染为字符串
 // - 预编译JS
 // 原则是将运行时消耗减到最小
-func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
-	slots := SlotsC{}
+func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
+	slots := &SlotsC{}
 	switch v.NodeType {
 	case parser.RootNode:
 		// Root节点只是一个虚拟节点, 不渲染自己, 直接渲染子级
@@ -1129,9 +1176,7 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			for k, v := range slotsc {
-				slots[k] = v
-			}
+			slots.marge(slotsc)
 			sg.Append(s)
 		}
 		return sg.Finish(), slots, nil
@@ -1179,9 +1224,7 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 					if err != nil {
 						return nil, nil, err
 					}
-					for k, v := range slotsc {
-						slots[k] = v
-					}
+					slots.marge(slotsc)
 					sg.Append(s)
 				}
 
@@ -1242,9 +1285,8 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 						if err != nil {
 							return nil, nil, err
 						}
-						for k, v := range slotsc {
-							slots[k] = v
-						}
+						slots.marge(slotsc)
+
 						childStatementG.Append(s)
 					}
 
@@ -1252,12 +1294,13 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 				}
 
 				// 子集 作为default slot
-				slot := map[string]*vSlotC{
-					"default": {
+				slot := &SlotsC{
+					Default: &vSlotC{
 						Name:     "default",
 						propsKey: "",
 						Children: childStatement,
 					},
+					NamedSlot: nil,
 				}
 
 				sg.Append(&tagStatement{
@@ -1318,9 +1361,7 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 					if err != nil {
 						return nil, nil, err
 					}
-					for k, v := range slotsc {
-						slots[k] = v
-					}
+					slots.marge(slotsc)
 					childStatementG.Append(s)
 				}
 
@@ -1328,7 +1369,7 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 			}
 
 			if childStatement != nil {
-				slots["default"] = &vSlotC{
+				slots.Default = &vSlotC{
 					Name:     "default",
 					propsKey: "",
 					Children: childStatement,
@@ -1361,7 +1402,7 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 			}
 
 			// 如果调用了自定义组件, 则slots就算这个自定义组件当中, 而不算在父级当中.
-			slots = SlotsC{}
+			slots = &SlotsC{}
 		}
 
 		if v.VIf != nil {
@@ -1376,9 +1417,7 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 				if err != nil {
 					return nil, nil, err
 				}
-				for k, v := range slotsc {
-					slots[k] = v
-				}
+				slots.marge(slotsc)
 
 				s := &elseStatement{
 					conditionCode:  f.Condition,
@@ -1422,7 +1461,10 @@ func toStatement(v *parser.VueElement) (Statement, SlotsC, error) {
 		}
 
 		if v.VSlot != nil {
-			slots[v.VSlot.SlotName] = &vSlotC{
+			if slots.NamedSlot == nil {
+				slots.NamedSlot = map[string]*vSlotC{}
+			}
+			slots.NamedSlot[v.VSlot.SlotName] = &vSlotC{
 				Name:     v.VSlot.SlotName,
 				propsKey: v.VSlot.PropsKey,
 				Children: st,

@@ -32,7 +32,7 @@ func New() *Vpl {
 			// 注意, 所有slot执行都有"编译作用域的问题"(https://cn.vuejs.org/v2/guide/components-slots.html#%E7%BC%96%E8%AF%91%E4%BD%9C%E7%94%A8%E5%9F%9F)
 			// slot是在父组件声明并会使用变量, 却在子组件中运行, 所以在执行slot时需要使用父组件环境.
 			"template": FuncStatement(func(ctx *StatementCtx, o *StatementOptions) error {
-				slot := o.Slots.Default()
+				slot := o.Slots.Default
 				if slot == nil {
 					return nil
 				}
@@ -61,7 +61,7 @@ func New() *Vpl {
 				slot := p.Slots.Get(slotName)
 				if slot == nil {
 					// 备选内容
-					fullback := o.Slots.Default()
+					fullback := o.Slots.Default
 					if fullback != nil {
 						err := fullback.ExecSlot(ctx, &ExecSlotOptions{
 							SlotProps: nil,
@@ -90,7 +90,7 @@ func New() *Vpl {
 				go func() {
 					ctx := ctx.Clone()
 					ctx.W = NewListWriter()
-					child := o.Slots.Default()
+					child := o.Slots.Default
 					if child == nil {
 						s.Done("")
 						return
