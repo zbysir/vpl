@@ -94,9 +94,9 @@ func TestDirective(t *testing.T) {
 				var a Animate
 				Copy(binding.Value, &a)
 
-				nodeData.Props.Append("data-wow-iteration", fmt.Sprintf("%v", a.Iteration))
-				nodeData.Props.Append("data-wow-delay", fmt.Sprintf("%0.2fs", a.Delay))
-				nodeData.Props.Append("data-wow-duration", fmt.Sprintf("%0.2fs", a.Duration))
+				nodeData.Props.Append(&vpl.PropsKey{AttrWay: vpl.CanBeAttr, Key: "data-wow-iteration"}, fmt.Sprintf("%v", a.Iteration))
+				nodeData.Props.Append(&vpl.PropsKey{AttrWay: vpl.CanBeAttr, Key: "data-wow-delay"}, fmt.Sprintf("%0.2fs", a.Delay))
+				nodeData.Props.Append(&vpl.PropsKey{AttrWay: vpl.CanBeAttr, Key: "data-wow-duration"}, fmt.Sprintf("%0.2fs", a.Duration))
 			})
 
 			v.Directive("style-important", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {

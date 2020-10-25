@@ -8,8 +8,9 @@ import (
 )
 
 type Prop struct {
-	IsStatic bool // 是否是静态的
-	Key, Val string
+	IsStatic  bool // 是否是静态的(v-bind:语法是动态, 之外是静态)
+	CanBeAttr bool // 是否当成attr输出
+	Key, Val  string
 }
 
 type Style struct {
@@ -186,7 +187,12 @@ type VueElement struct {
 	VText string
 }
 
+type ParseVueNodeOptions struct {
+	CanBeAttr func(k string) bool
+}
+
 type VueElementParser struct {
+	options *ParseVueNodeOptions
 }
 
 func (p VueElementParser) Parse(e *Node) (*VueElement, error) {
@@ -248,9 +254,12 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 					}
 
 				} else {
+					// 动态prosp
 					props = append(props, &Prop{
-						Key: key,
-						Val: attr.Value,
+						IsStatic:  false,
+						CanBeAttr: p.options.CanBeAttr(key),
+						Key:       key,
+						Val:       attr.Value,
 					})
 				}
 			} else if strings.HasPrefix(oriKey, "v-") {
@@ -362,10 +371,12 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 					styles.Add(key, val)
 				}
 			} else {
+				// 静态props
 				props = append(props, &Prop{
-					Key:      key,
-					Val:      attr.Value,
-					IsStatic: true,
+					CanBeAttr: p.options.CanBeAttr(key),
+					Key:       key,
+					Val:       attr.Value,
+					IsStatic:  true,
 				})
 			}
 		}
@@ -437,8 +448,10 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 }
 
 // 将html节点转换为Vue节点
-func ToVueNode(node *Node) (vn *VueElement, err error) {
-	return VueElementParser{}.Parse(node)
+func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err error) {
+	return VueElementParser{
+		options: options,
+	}.Parse(node)
 }
 
 func (p *VueElement) NicePrint(showChild bool, lev int) string {

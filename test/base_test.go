@@ -98,8 +98,8 @@ func TestComponent(t *testing.T) {
 				{
 					Name: "Infos",
 					Txt: `
-<!-- vue使用 v-bind="$attrs" 将属性放置到tag上, 但vtpl不能区分attrs和props, 所以只能使用props. -->
-<!-- 可以通过设置Vue.Options.CanBeAttrsKey('id', 'class', 'style', 'data-*')来指定那些props转成attrs -->
+<!-- vue使用 v-bind="$attrs" 将属性放置到tag上, 但vpl不能区分attrs和props, 所以只能使用props. -->
+<!-- 可以通过设置WithCanBeAttrsKey()来设置那些propsKey可以输出为attrs -->
 <div v-bind="$props">
 	<template v-for="item in infos">
 		{{$index}}
@@ -181,7 +181,16 @@ func TestComponent(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			vue := vpl.New()
+			vue := vpl.New(vpl.WithCanBeAttrsKey(func(k string) bool {
+				if k == "id" {
+					return true
+				}
+				if strings.HasPrefix(k, "data") {
+					return true
+				}
+
+				return false
+			}))
 			t.Logf("compile....")
 
 			for _, tp := range c.Tpl {
@@ -314,13 +323,14 @@ func TestRender(t *testing.T) {
 // -- 2020-10-23
 // 100 565072 ns/op
 // -- 2020-10-24 删除掉多余的NewProps()
-// 511415 ns/op	  482172 B/op	    6983 allocs/op(Win)
+// 511415 ns/op	  482172 B/op	    6983 allocs/op(WIN)
 // -- 2020-10-24 删除掉copyMap
-// 453217 ns/op	  402995 B/op	    6177 allocs/op(Win)
+// 453217 ns/op	  402995 B/op	    6177 allocs/op(WIN)
 // -- 2020-10-24 使用pool管理RenderCtx
-// 474725 ns/op	  390092 B/op	    5774 allocs/op(Win)
+// 474725 ns/op	  390092 B/op	    5774 allocs/op(WIN)
 // -- 2020-10-24 优化slot存储方式
 // 386870 ns/op	  339223 B/op	    5268 allocs/op(MAC)
+// 400494 ns/op	  327072 B/op	    5266 allocs/op(Win)
 func BenchmarkRender(b *testing.B) {
 	b.ReportAllocs()
 	vue := vpl.New()

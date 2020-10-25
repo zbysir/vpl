@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/valyala/bytebufferpool"
+	"github.com/zbysir/vpl/internal/parser"
 	"github.com/zbysir/vpl/internal/util"
 	"io/ioutil"
+	"strings"
 	"sync"
 )
 
@@ -20,13 +22,21 @@ type Vpl struct {
 	// 指令
 	directives map[string]Directive
 
-	// 什么prop可以被写成attr
-	canBeAttr func(p *Prop) bool
+	// 什么prop可以被写成attr(编译时)
+	canBeAttrsKey func(k string) bool
+}
+
+type Options func(o *Vpl)
+
+func WithCanBeAttrsKey(canBeAttr func(k string) bool) Options {
+	return func(o *Vpl) {
+		o.canBeAttrsKey = canBeAttr
+	}
 }
 
 // New 返回Vpl实例, 该实例应该被共用在多次渲染中, 推荐做法是整个程序只有一个Vpl实例.
-func New() *Vpl {
-	return &Vpl{
+func New(options ...Options) *Vpl {
+	vpl := &Vpl{
 		components: map[string]Statement{
 			// 模板, 直接渲染子组件
 			// 注意, 所有slot执行都有"编译作用域的问题"(https://cn.vuejs.org/v2/guide/components-slots.html#%E7%BC%96%E8%AF%91%E4%BD%9C%E7%94%A8%E5%9F%9F)
@@ -114,6 +124,26 @@ func New() *Vpl {
 		prototype:  NewScope(),
 		directives: map[string]Directive{},
 	}
+
+	for _, o := range options {
+		o(vpl)
+	}
+
+	if vpl.canBeAttrsKey == nil {
+		vpl.canBeAttrsKey = DefaultCanBeAttr
+	}
+	return vpl
+}
+
+var DefaultCanBeAttr = func(k string) bool {
+	if k == "id" {
+		return true
+	}
+	if strings.HasPrefix(k, "data") {
+		return true
+	}
+
+	return false
 }
 
 func (v *Vpl) Component(name string, c Statement) (err error) {
@@ -131,7 +161,9 @@ func (v *Vpl) ComponentFile(name string, path string) (err error) {
 }
 
 func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
-	s, err := ParseHtmlToStatement(txt)
+	s, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
+		CanBeAttr: v.canBeAttrsKey,
+	})
 	if err != nil {
 		return
 	}
@@ -166,7 +198,9 @@ func (v *Vpl) NewScope() *Scope {
 
 // tpl e.g.: <main v-bind="$props"></main>
 func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
-	statement, err := ParseHtmlToStatement(tpl)
+	statement, err := ParseHtmlToStatement(tpl, &parser.ParseVueNodeOptions{
+		CanBeAttr: v.canBeAttrsKey,
+	})
 	if err != nil {
 		return "", fmt.Errorf("parseHtmlToStatement err: %w", err)
 	}
@@ -180,12 +214,13 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 		global = global.Extend(p.Global)
 	}
 	ctx := &StatementCtx{
-		Global:     global,
-		Store:      nil,
-		Ctx:        p.Ctx,
-		W:          w,
-		Components: v.components,
-		Directives: v.directives,
+		Global:        global,
+		Store:         nil,
+		Ctx:           p.Ctx,
+		W:             w,
+		Components:    v.components,
+		Directives:    v.directives,
+		CanBeAttrsKey: v.canBeAttrsKey,
 	}
 
 	propsMap := p.Props.ToMap()
@@ -234,12 +269,13 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 		global = global.Extend(p.Global)
 	}
 	ctx := &StatementCtx{
-		Global:     global,
-		Store:      p.Store,
-		Ctx:        p.Ctx,
-		W:          w,
-		Components: v.components,
-		Directives: v.directives,
+		Global:        global,
+		Store:         p.Store,
+		Ctx:           p.Ctx,
+		W:             w,
+		Components:    v.components,
+		Directives:    v.directives,
+		CanBeAttrsKey: v.canBeAttrsKey,
 	}
 	err = statement.Exec(ctx, &StatementOptions{
 		Slots:     nil,

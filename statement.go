@@ -86,9 +86,10 @@ type DirectivesBinding struct {
 // 编译之后的Prop
 // 将js表达式解析成AST, 加速运行
 type propC struct {
-	Key     string
-	ValCode string
-	Val     expression
+	CanBeAttr bool
+	Key       string
+	ValCode   string
+	Val       expression
 }
 
 type propsC []*propC
@@ -119,7 +120,14 @@ func (r propsC) execTo(ctx *RenderCtx, ps *Props) {
 		return
 	}
 	for _, p := range r {
-		ps.Append(p.Key, p.exec(ctx).Val)
+		c := CanNotBeAttr
+		if p.CanBeAttr {
+			c = CanBeAttr
+		}
+		ps.Append(&PropsKey{
+			AttrWay: c,
+			Key:     p.Key,
+		}, p.exec(ctx).Val)
 	}
 	return
 }
@@ -138,18 +146,31 @@ type Prop struct {
 	Val interface{}
 }
 
+type PropsKey struct {
+	AttrWay AttrWay // 能否被当成Attr输出
+	Key     string
+}
+
+type AttrWay uint8
+
+const (
+	MayBeAttr    AttrWay = 0 // 无法在编译时确定, 还需要在运行时判断
+	CanBeAttr    AttrWay = 1 // 在编译时就确定能够当做attr
+	CanNotBeAttr AttrWay = 2 // 在编译时就确定不能够当做attr
+)
+
 type Props struct {
-	orderKey []string               // 在生成attr时会用到顺序
-	data     map[string]interface{} // 存储map有利于快速取值
+	keys []*PropsKey            // 在生成attr时会用到顺序
+	data map[string]interface{} // 存储map有利于快速取值
 }
 
 func NewProps() *Props {
 	return &Props{}
 }
 
-func (r *Props) ForEach(cb func(index int, k string, v interface{})) {
-	for index, k := range r.orderKey {
-		cb(index, k, r.data[k])
+func (r *Props) ForEach(cb func(index int, k *PropsKey, v interface{})) {
+	for index, k := range r.keys {
+		cb(index, k, r.data[k.Key])
 	}
 	return
 }
@@ -161,16 +182,16 @@ func (r *Props) ToMap() map[string]interface{} {
 	return r.data
 }
 
-func (r *Props) Append(k string, v interface{}) {
+func (r *Props) Append(k *PropsKey, v interface{}) {
 	if r.data == nil {
 		r.data = map[string]interface{}{}
 	}
-	_, exist := r.data[k]
+	_, exist := r.data[k.Key]
 	if !exist {
-		r.orderKey = append(r.orderKey, k)
+		r.keys = append(r.keys, k)
 	}
 
-	r.data[k] = v
+	r.data[k.Key] = v
 }
 
 // 无序添加多个props
@@ -179,7 +200,10 @@ func (r *Props) AppendMap(mp map[string]interface{}) {
 
 	for _, k := range keys {
 		v := mp[k]
-		r.Append(k, v)
+		r.Append(&PropsKey{
+			AttrWay: MayBeAttr,
+			Key:     k,
+		}, v)
 	}
 }
 
@@ -189,7 +213,7 @@ func (r *Props) appendProps(ps *Props) {
 		return
 	}
 
-	ps.ForEach(func(index int, k string, v interface{}) {
+	ps.ForEach(func(index int, k *PropsKey, v interface{}) {
 		r.Append(k, v)
 	})
 }
@@ -231,9 +255,10 @@ func compileProp(p *parser.Prop) (*propC, error) {
 		}
 	}
 	return &propC{
-		Key:     p.Key,
-		ValCode: p.Val,
-		Val:     valExpression,
+		Key:       p.Key,
+		ValCode:   p.Val,
+		Val:       valExpression,
+		CanBeAttr: p.CanBeAttr,
 	}, nil
 }
 
@@ -545,16 +570,23 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		attrs.WriteString(sty.ToAttr())
 	}
 
-	props.ForEach(func(index int, k string, v interface{}) {
+	props.ForEach(func(index int, k *PropsKey, v interface{}) {
 		// 跳过scope内置的$props字段
-		if k == "$props" {
+		// 如果在编译期就确定了不能被转为attr, 则始终不能
+		// 如果无法在编译期间确定(如 通过props.AppendMap()的方式添加的props), 则还需要再次调用函数判断
+		if k.AttrWay == CanNotBeAttr {
 			return
+		}
+		if k.AttrWay == MayBeAttr {
+			if !ctx.CanBeAttrsKey(k.Key) {
+				return
+			}
 		}
 
 		if attrs.Len() != 0 {
 			attrs.Write([]byte(" "))
 		}
-		attrs.WriteString(k)
+		attrs.WriteString(k.Key)
 
 		if v != nil {
 			attrs.WriteString(`="`)
@@ -1030,12 +1062,12 @@ func (s *Slots) Get(key string) *Slot {
 	return s.NamedSlot[key]
 }
 
-func ParseHtmlToStatement(tpl string) (Statement, error) {
+func ParseHtmlToStatement(tpl string, options *parser.ParseVueNodeOptions) (Statement, error) {
 	nt, err := parser.ParseHtml(tpl)
 	if err != nil {
 		return nil, err
 	}
-	vn, err := parser.ToVueNode(nt)
+	vn, err := parser.ToVueNode(nt, options)
 	if err != nil {
 		return nil, fmt.Errorf("parseToVue err: %w", err)
 	}
@@ -1081,8 +1113,9 @@ type StatementCtx struct {
 	Ctx context.Context
 	W   Writer
 
-	Components map[string]Statement
-	Directives map[string]Directive
+	Components    map[string]Statement
+	Directives    map[string]Directive
+	CanBeAttrsKey func(k string) bool
 }
 
 func (c *StatementCtx) NewScope() *Scope {
@@ -1093,12 +1126,13 @@ func (c *StatementCtx) NewScope() *Scope {
 
 func (c *StatementCtx) Clone() *StatementCtx {
 	return &StatementCtx{
-		Global:     c.Global,
-		Store:      c.Store,
-		Ctx:        c.Ctx,
-		W:          c.W,
-		Components: c.Components,
-		Directives: c.Directives,
+		Global:        c.Global,
+		Store:         c.Store,
+		Ctx:           c.Ctx,
+		W:             c.W,
+		Components:    c.Components,
+		Directives:    c.Directives,
+		CanBeAttrsKey: c.CanBeAttrsKey,
 	}
 }
 
