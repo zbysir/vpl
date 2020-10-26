@@ -88,7 +88,6 @@ type DirectivesBinding struct {
 type propC struct {
 	CanBeAttr bool
 	Key       string
-	ValCode   string
 	Val       expression
 }
 
@@ -98,7 +97,11 @@ type propsC []*propC
 func (r propsC) String() string {
 	str := "["
 	for _, v := range r {
-		str += fmt.Sprintf("%+v: %v, ", v.Key, v.ValCode)
+		beAttr := ""
+		if v.CanBeAttr {
+			beAttr = "(attr)"
+		}
+		str += fmt.Sprintf("%+v%v: %v, ", v.Key, beAttr, v.Val)
 	}
 	str = strings.TrimSuffix(str, ", ")
 	str += "]"
@@ -124,7 +127,8 @@ func (r propsC) execTo(ctx *RenderCtx, ps *Props) {
 		if p.CanBeAttr {
 			c = CanBeAttr
 		}
-		ps.Append(&PropsKey{
+
+		ps.Append(&PropKey{
 			AttrWay: c,
 			Key:     p.Key,
 		}, p.exec(ctx).Val)
@@ -146,7 +150,7 @@ type Prop struct {
 	Val interface{}
 }
 
-type PropsKey struct {
+type PropKey struct {
 	AttrWay AttrWay // 能否被当成Attr输出
 	Key     string
 }
@@ -160,7 +164,7 @@ const (
 )
 
 type Props struct {
-	keys []*PropsKey            // 在生成attr时会用到顺序
+	keys []*PropKey             // 在生成attr时会用到顺序
 	data map[string]interface{} // 存储map有利于快速取值
 }
 
@@ -168,7 +172,7 @@ func NewProps() *Props {
 	return &Props{}
 }
 
-func (r *Props) ForEach(cb func(index int, k *PropsKey, v interface{})) {
+func (r *Props) ForEach(cb func(index int, k *PropKey, v interface{})) {
 	for index, k := range r.keys {
 		cb(index, k, r.data[k.Key])
 	}
@@ -182,16 +186,95 @@ func (r *Props) ToMap() map[string]interface{} {
 	return r.data
 }
 
-func (r *Props) Append(k *PropsKey, v interface{}) {
+func (r *Props) Append(k *PropKey, v interface{}) {
 	if r.data == nil {
 		r.data = map[string]interface{}{}
 	}
-	_, exist := r.data[k.Key]
+
+	// 合并class/style
+	ve, exist := r.data[k.Key]
 	if !exist {
 		r.keys = append(r.keys, k)
+	} else {
+		switch k.Key {
+		case "class":
+			v = margeClass(ve, v)
+		case "style":
+			v = margeStyle(ve, v)
+		}
 	}
 
 	r.data[k.Key] = v
+}
+
+// AppendAttr 向当前tag添加属性
+func (r *Props) AppendAttr(k, v string) {
+	if r.data == nil {
+		r.data = map[string]interface{}{}
+	}
+
+	_, exist := r.data[k]
+	if !exist {
+		r.keys = append(r.keys, &PropKey{
+			AttrWay: CanBeAttr,
+			Key:     k,
+		})
+	}
+
+	r.data[k] = v
+}
+
+func (r *Props) AppendClass(c ...string) {
+	cla := make([]interface{}, len(c))
+	for i, v := range c {
+		cla[i] = v
+	}
+	r.Append(&PropKey{
+		AttrWay: CanBeAttr,
+		Key:     "class",
+	}, cla)
+}
+
+func (r *Props) AppendStyle(st map[string]string) {
+	stm := make(map[string]interface{}, len(st))
+	for k, v := range st {
+		stm[k] = v
+	}
+	r.Append(&PropKey{
+		AttrWay: CanBeAttr,
+		Key:     "style",
+	}, stm)
+}
+
+func margeClass(a interface{}, b interface{}) (d interface{}) {
+	var ar []interface{}
+	if at, ok := a.([]interface{}); ok {
+		ar = at
+	} else {
+		at = []interface{}{a}
+	}
+
+	if bt, ok := b.([]interface{}); ok {
+		ar = append(ar, bt)
+	}
+	return ar
+}
+
+func margeStyle(a interface{}, b interface{}) (d interface{}) {
+	var ar map[string]interface{}
+	if at, ok := a.(map[string]interface{}); ok {
+		ar = at
+	} else {
+		ar = map[string]interface{}{}
+	}
+
+	if bt, ok := b.(map[string]interface{}); ok {
+		for k, v := range bt {
+			ar[k] = v
+		}
+	}
+
+	return ar
 }
 
 // 无序添加多个props
@@ -200,7 +283,7 @@ func (r *Props) AppendMap(mp map[string]interface{}) {
 
 	for _, k := range keys {
 		v := mp[k]
-		r.Append(&PropsKey{
+		r.Append(&PropKey{
 			AttrWay: MayBeAttr,
 			Key:     k,
 		}, v)
@@ -213,7 +296,7 @@ func (r *Props) appendProps(ps *Props) {
 		return
 	}
 
-	ps.ForEach(func(index int, k *PropsKey, v interface{}) {
+	ps.ForEach(func(index int, k *PropKey, v interface{}) {
 		r.Append(k, v)
 	})
 }
@@ -235,6 +318,7 @@ func compileProps(p parser.Props) (propsC, error) {
 	return pc, nil
 }
 
+// TODO 如果 style和class动态与静态不冲突, 则可以将静态style/class优化为 string
 func compileProp(p *parser.Prop) (*propC, error) {
 	if p == nil {
 		return nil, nil
@@ -242,7 +326,7 @@ func compileProp(p *parser.Prop) (*propC, error) {
 	var valExpression expression
 
 	if p.IsStatic {
-		valExpression = &rawExpression{raw: p.Val}
+		valExpression = &rawExpression{raw: p.StaticVal}
 	} else {
 		if p.Val != "" {
 			node, err := compileJS(p.Val)
@@ -254,9 +338,9 @@ func compileProp(p *parser.Prop) (*propC, error) {
 			valExpression = &nullExpression{}
 		}
 	}
+
 	return &propC{
 		Key:       p.Key,
-		ValCode:   p.Val,
 		Val:       valExpression,
 		CanBeAttr: p.CanBeAttr,
 	}, nil
@@ -301,22 +385,15 @@ func compileDirective(ds parser.Directives) (directivesC, error) {
 
 // 作用在tag的所有属性
 type tagStruct struct {
-	// Props: 无论动态还是静态, 都是Props (除了style和class, style和class为了优化性能, 需要特殊处理)
+	// Props: 无论动态还是静态, 都是Props(包括class与style, 这是为了实现v-bind='$props'语法).
 	// 静态的attr也处理成Props是为了保持顺序, 当然也是为了减少概念
 	//
 	//  如: <div id="abc" :data-id="id" :style="{left: '1px'}">
-	//  其中 Props 值为: id, data-id
-	//  其中 PropStyle 值为: style
+	//  其中 Props 值为: id=string, data-id=string, style=map[string]interface
 	//
-	// 另外tag上的 Props 都会被转为html attr
-	Props     propsC
-	PropClass *propC
-	PropStyle *propC
-	VBind     *vBindC
-
-	// 静态class, 将会和动态class合并
-	StaticClass parser.Class
-	StaticStyle parser.Styles
+	// 另外tag上的 Props 会根据CanBeAttrKey设置被转为html attr.
+	Props propsC
+	VBind *vBindC
 
 	Directives directivesC
 	Slots      *SlotsC
@@ -359,14 +436,20 @@ type ComponentStruct struct {
 // 有一个特殊用法:
 //  v-bind='$props': 将父组件所有的 props(不包括class和style) 一起传给子组件
 type vBindC struct {
-	val expression
+	useProps bool
+	val      expression
 }
 
 func (v *vBindC) execTo(ctx *RenderCtx, ps *Props) {
 	if v == nil {
 		return
 	}
-	b := v.val.Exec(ctx)
+	var b interface{}
+	if v.useProps {
+		b = ctx.Scope.Get("$props")
+	} else {
+		b = v.val.Exec(ctx)
+	}
 	switch t := b.(type) {
 	case map[string]interface{}:
 		ps.AppendMap(t)
@@ -375,7 +458,7 @@ func (v *vBindC) execTo(ctx *RenderCtx, ps *Props) {
 	case *Props:
 		ps.appendProps(t)
 	default:
-		panic(fmt.Sprintf("bad Type of Vbind: %T", v.val))
+		panic(fmt.Sprintf("bad Type of Vbind: %T", b))
 	}
 }
 
@@ -388,6 +471,10 @@ type expression interface {
 // 原始值
 type rawExpression struct {
 	raw interface{}
+}
+
+func (r *rawExpression) String() string {
+	return fmt.Sprintf("%v", r.raw)
 }
 
 func (r *rawExpression) Exec(*RenderCtx) interface{} {
@@ -497,8 +584,8 @@ type Styles = parser.Styles
 
 type NodeData struct {
 	Props *Props // 给组件添加attr
-	Class *Class //
-	Style *Styles
+	//Class *Class //
+	//Style *Styles
 	Slots *Slots
 }
 
@@ -512,37 +599,40 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	var attrs strings.Builder
 
 	// 处理class
-	cla := parser.NewClass()
-	if len(t.tagStruct.StaticClass) != 0 {
-		cla.Merge(t.tagStruct.StaticClass)
-	}
-	if t.tagStruct.PropClass != nil {
-		claProp := getClassFromProps(t.tagStruct.PropClass.exec(rCtx).Val)
-		cla.Merge(claProp)
-	}
+	//cla := parser.NewClass()
+	//if len(t.tagStruct.StaticClass) != 0 {
+	//	cla.Merge(t.tagStruct.StaticClass)
+	//}
+	//if t.tagStruct.PropClass != nil {
+	//	claProp := getClassFromProps(t.tagStruct.PropClass.exec(rCtx).Val)
+	//	cla.Merge(claProp)
+	//}
+
+	//t.tagStruct.Props.
 
 	// 处理style
-	sty := parser.Styles{}
-	if len(t.tagStruct.StaticStyle) != 0 {
-		sty.Merge(t.tagStruct.StaticStyle)
-	}
-	if t.tagStruct.PropStyle != nil {
-		styProp := getStyleFromProps(t.tagStruct.PropStyle.exec(rCtx).Val)
-		if len(styProp) != 0 {
-			sty.Merge(styProp)
-		}
-	}
+	//sty := parser.Styles{}
+	//if len(t.tagStruct.StaticStyle) != 0 {
+	//	sty.Merge(t.tagStruct.StaticStyle)
+	//}
+	//if t.tagStruct.PropStyle != nil {
+	//	styProp := getStyleFromProps(t.tagStruct.PropStyle.exec(rCtx).Val)
+	//	if len(styProp) != 0 {
+	//		sty.Merge(styProp)
+	//	}
+	//}
 
 	// 处理attr
 	// 计算Props
 	props := NewProps()
-	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
-	if t.tagStruct.VBind != nil {
-		t.tagStruct.VBind.execTo(rCtx, props)
-	}
 
 	if len(t.tagStruct.Props) != 0 {
 		t.tagStruct.Props.execTo(rCtx, props)
+	}
+
+	// v-bind="{id: 1}" 语法, 将计算出整个PropsR
+	if t.tagStruct.VBind != nil {
+		t.tagStruct.VBind.execTo(rCtx, props)
 	}
 
 	slots := t.tagStruct.Slots.WrapScope(o.Scope)
@@ -552,53 +642,76 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	if len(t.tagStruct.Directives) != 0 {
 		execDirectives(t.tagStruct.Directives, ctx, o.Scope, &NodeData{
 			Props: props,
-			Class: &cla,
-			Style: &sty,
+			//Class: &cla,
+			//Style: &sty,
 			Slots: slots,
 		})
 	}
 
 	// 生成 attrs
-	if len(cla) != 0 {
-		attrs.WriteString(cla.ToAttr())
-	}
+	//if len(cla) != 0 {
+	//	attrs.WriteString(cla.ToAttr())
+	//}
+	//
+	//if len(sty) != 0 {
+	//	if attrs.Len() != 0 {
+	//		attrs.Write([]byte(" "))
+	//	}
+	//	attrs.WriteString(sty.ToAttr())
+	//}
 
-	if len(sty) != 0 {
-		if attrs.Len() != 0 {
-			attrs.Write([]byte(" "))
-		}
-		attrs.WriteString(sty.ToAttr())
-	}
-
-	props.ForEach(func(index int, k *PropsKey, v interface{}) {
+	props.ForEach(func(index int, k *PropKey, v interface{}) {
 		// 跳过scope内置的$props字段
 		// 如果在编译期就确定了不能被转为attr, 则始终不能
-		// 如果无法在编译期间确定(如 通过props.AppendMap()的方式添加的props), 则还需要再次调用函数判断
+		// 如果无法在编译期间确定(如 通过props.AppendMap()的方式添加的props/通过v-bind="$props"方式而来的props), 则还需要再次调用函数判断
 		if k.AttrWay == CanNotBeAttr {
 			return
 		}
 		if k.AttrWay == MayBeAttr {
-			if !ctx.CanBeAttrsKey(k.Key) {
-				return
+			// style和class字段始终会作为attr
+			if k.Key != "style" && k.Key != "class" {
+				if !ctx.CanBeAttrsKey(k.Key) {
+					return
+				}
 			}
 		}
 
-		if attrs.Len() != 0 {
-			attrs.Write([]byte(" "))
-		}
-		attrs.WriteString(k.Key)
-
-		if v != nil {
-			attrs.WriteString(`="`)
-
-			switch v := v.(type) {
-			case string:
-				attrs.WriteString(v)
-			default:
-				attrs.WriteString(util.InterfaceToStr(v, true))
+		if k.Key == "style" {
+			cla := getStyleFromProps(v)
+			if len(cla) != 0 {
+				if attrs.Len() != 0 {
+					attrs.Write([]byte(" "))
+				}
+				attrs.WriteString(cla.ToAttr())
 			}
-			attrs.WriteString(`"`)
+		} else if k.Key == "class" {
+			cla := getClassFromProps(v)
+			if len(cla) != 0 {
+				if attrs.Len() != 0 {
+					attrs.Write([]byte(" "))
+				}
+				attrs.WriteString(cla.ToAttr())
+			}
+		} else {
+			if attrs.Len() != 0 {
+				attrs.Write([]byte(" "))
+			}
+
+			attrs.WriteString(k.Key)
+
+			if v != nil {
+				attrs.WriteString(`="`)
+
+				switch v := v.(type) {
+				case string:
+					attrs.WriteString(v)
+				default:
+					attrs.WriteString(util.InterfaceToStr(v, true))
+				}
+				attrs.WriteString(`"`)
+			}
 		}
+
 	})
 
 	ctx.W.WriteString("<" + t.tag)
@@ -610,12 +723,14 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 	ctx.W.WriteString(">")
 
-	// 子节点
-	children := slots.Default
-	if children != nil {
-		err := children.ExecSlot(ctx, nil)
-		if err != nil {
-			return err
+	if slots != nil {
+		// 子节点
+		children := slots.Default
+		if children != nil {
+			err := children.ExecSlot(ctx, nil)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -853,8 +968,8 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	if len(c.ComponentStruct.Directives) != 0 {
 		execDirectives(c.ComponentStruct.Directives, ctx, o.Scope, &NodeData{
 			Props: props,
-			Class: &o.StaticClass,
-			Style: &o.StaticStyle,
+			//Class: &o.StaticClass,
+			//Style: &o.StaticStyle,
 			Slots: slots,
 		})
 	}
@@ -897,7 +1012,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 }
 
 // 声明Slot的语句(编译时)
-// v-slot:default="SlotProps"
+// <h1 v-slot:default="SlotProps"> </h1>
 type vSlotC struct {
 	Name     string
 	propsKey string
@@ -926,10 +1041,7 @@ func (s *Slot) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
 
 	// 将申明时的scope和传递的slot-props合并
 	scope := s.ScopeWhenDeclaration
-	if scope == nil {
-		scope = ctx.NewScope()
-	}
-	if o != nil && o.SlotProps != nil {
+	if scope != nil && o != nil && o.SlotProps != nil {
 		scope = scope.Extend(map[string]interface{}{
 			s.propsKey: o.SlotProps.ToMap(),
 		})
@@ -989,7 +1101,7 @@ func (i *rawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 }
 
 // https://cn.vuejs.org/v2/guide/components-slots.html
-// Slots 存放传递给组件的所有Slot（默认与具名）, vue语法: <h1 v-slot:default="xxx"></h1>
+// SlotsC 存放传递给组件的所有Slot（默认与具名）(编译时), vue语法: <h1 v-slot:default="xxx"></h1>
 type SlotsC struct {
 	Default   *vSlotC
 	NamedSlot map[string]*vSlotC
@@ -1162,12 +1274,13 @@ func (g MapStore) Set(key string, val interface{}) {
 // 如果全部是静态Props, 则能被渲染为静态字符串
 func canBeStr(v *parser.VueElement) bool {
 	return v.Props.IsStatic() &&
-		v.PropClass == nil &&
-		v.PropStyle == nil &&
+		//v.PropClass == nil &&
+		//v.PropStyle == nil &&
 		v.VBind == nil &&
 		v.VHtml == "" &&
 		v.VText == "" &&
-		len(v.Directives) == 0
+		len(v.Directives) == 0 &&
+		v.DistributionAttr == false
 }
 
 var htmlTag = map[string]struct{}{
@@ -1224,22 +1337,19 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 			if canBeStr(v) {
 				attrs := ""
 
-				if len(v.Class) != 0 {
-					attrs += v.Class.ToAttr()
-				}
-
-				if len(v.Style) != 0 {
-					if attrs != "" {
-						attrs += " "
-					}
-					attrs += v.Style.ToAttr()
-				}
+				//if len(v.Class) != 0 {
+				//	attrs += v.Class.ToAttr()
+				//}
+				//
+				//if len(v.Style) != 0 {
+				//	if attrs != "" {
+				//		attrs += " "
+				//	}
+				//	attrs += v.Style.ToAttr()
+				//}
 
 				// 静态props
 				if len(v.Props) != 0 {
-					if attrs != "" {
-						attrs += " "
-					}
 					attrs += genAttrFromProps(v.Props)
 				}
 
@@ -1266,23 +1376,29 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 			} else {
 				// 动态的（依赖变量）节点渲染
 
-				pc, err := compileProp(v.PropClass)
-				if err != nil {
-					return nil, nil, err
-				}
-				ps, err := compileProp(v.PropStyle)
-				if err != nil {
-					return nil, nil, err
-				}
+				//pc, err := compileProp(v.PropClass)
+				//if err != nil {
+				//	return nil, nil, err
+				//}
+				//ps, err := compileProp(v.PropStyle)
+				//if err != nil {
+				//	return nil, nil, err
+				//}
 
 				p, err := compileProps(v.Props)
 				if err != nil {
 					return nil, nil, err
 				}
 
-				vbind, err := compileVBind(v.VBind)
-				if err != nil {
-					return nil, nil, err
+				// 如果被自动分配attr, 那么直接继承上一层的props
+				var vbind *vBindC
+				if v.DistributionAttr {
+					vbind = &vBindC{useProps: true}
+				} else {
+					vbind, err = compileVBind(v.VBind)
+					if err != nil {
+						return nil, nil, err
+					}
 				}
 
 				dir, err := compileDirective(v.Directives)
@@ -1340,14 +1456,14 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 				sg.Append(&tagStatement{
 					tag: v.Tag,
 					tagStruct: tagStruct{
-						Props:       p,
-						PropClass:   pc,
-						PropStyle:   ps,
-						StaticClass: v.Class,
-						StaticStyle: v.Style,
-						Directives:  dir,
-						Slots:       slots,
-						VBind:       vbind,
+						Props: p,
+						//PropClass:   pc,
+						//PropStyle:   ps,
+						//StaticClass: v.Class,
+						//StaticStyle: v.Style,
+						Directives: dir,
+						Slots:      slots,
+						VBind:      vbind,
 					},
 				})
 			}
@@ -1355,14 +1471,14 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 			st = sg.Finish()
 		} else {
 			// 自定义组件
-			pc, err := compileProp(v.PropClass)
-			if err != nil {
-				return nil, nil, err
-			}
-			ps, err := compileProp(v.PropStyle)
-			if err != nil {
-				return nil, nil, err
-			}
+			//pc, err := compileProp(v.PropClass)
+			//if err != nil {
+			//	return nil, nil, err
+			//}
+			//ps, err := compileProp(v.PropStyle)
+			//if err != nil {
+			//	return nil, nil, err
+			//}
 
 			p, err := compileProps(v.Props)
 			if err != nil {
@@ -1424,14 +1540,14 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 			st = &ComponentStatement{
 				ComponentKey: v.Tag,
 				ComponentStruct: ComponentStruct{
-					Props:       p,
-					PropClass:   pc,
-					PropStyle:   ps,
-					VBind:       vbind,
-					StaticClass: v.Class,
-					StaticStyle: v.Style,
-					Directives:  dir,
-					Slots:       slots,
+					Props: p,
+					//PropClass:   pc,
+					//PropStyle:   ps,
+					VBind: vbind,
+					//StaticClass: v.Class,
+					//StaticStyle: v.Style,
+					Directives: dir,
+					Slots:      slots,
 				},
 			}
 

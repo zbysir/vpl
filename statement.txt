@@ -1,14 +1,15 @@
-<div class="c">Text</div>
-Tag(div, [id: id])
-  Infos:
-  Tag(ul, [])
-    If(ifStart)
-      <li about="a">Start<span>span</span></li>
-    Else
-      <li about="b">Not Start</li>
-    For(item in infos)
-      Tag(li, [id: item.id, key: item.id])
-        {{item.label}}
-        : 
-        {{item.value}}
-    <li>End</li>
+Tag(div, [], BindProps)
+  <div class="c">Text</div>
+  Tag(div, [id(attr): id])
+    Infos:
+    Tag(ul, [class(attr): 'c' + ulClass])
+      If(ifStart)
+        <li about="a">Start<span>span</span></li>
+      Else
+        <li about="b">Not Start</li>
+      For(item in infos)
+        Tag(li, [id(attr): item.id, key: item.id])
+          {{item.label}}
+          : 
+          {{item.value}}
+      <li>End</li>

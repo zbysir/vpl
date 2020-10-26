@@ -20,7 +20,7 @@ const (
 	CommentNode
 	DoctypeNode
 	scopeMarkerNode
-	// Root节点只是一个虚拟节点, 不渲染自己, 直接渲染子级
+	// Root节点只是一个虚拟节点, 方便管理, 不会参与渲染, 而是直接渲染子级
 	RootNode
 )
 
@@ -178,7 +178,7 @@ const whitespace = " \t\r\n\f"
 func (p *NodeParser) Parse(l *html.Lexer) (node *Node, err error) {
 	rootNode := &Node{
 		NodeType: RootNode,
-		Tag:      "",
+		Tag:      "ROOT",
 		Text:     "",
 		Attrs:    nil,
 		Parent:   nil,

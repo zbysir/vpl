@@ -9,17 +9,19 @@ import (
 
 func TestSimpleNodeVue(t *testing.T) {
 	const rawPageHtml = `
-<div class="c">
-	Text
-</div>
-<div :id="id">
-	Infos:
-	<ul :class="'c' + ulClass">
-		<li v-if="ifStart" about=a>Start <span> span </span></li>
-		<li v-else about=b>Not Start</li>
-		<li v-for="item in infos" :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
-		<li>End</li>
-	</ul>
+<div>
+	<div class="c">
+		Text
+	</div>
+	<div :id="id">
+		Infos:
+		<ul :class="'c' + ulClass">
+			<li v-if="ifStart" about=a>Start <span> span </span></li>
+			<li v-else about=b>Not Start</li>
+			<li v-for="item in infos" :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
+			<li>End</li>
+		</ul>
+	</div>
 </div>
 `
 
@@ -43,7 +45,7 @@ func TestSimpleNodeVue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vn, err := parser.ToVueNode(nt)
+	vn, err := parser.ToVueNode(nt, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

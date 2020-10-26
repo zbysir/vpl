@@ -139,7 +139,7 @@ var DefaultCanBeAttr = func(k string) bool {
 	if k == "id" {
 		return true
 	}
-	if strings.HasPrefix(k, "data") {
+	if strings.HasPrefix(k, "data-") {
 		return true
 	}
 

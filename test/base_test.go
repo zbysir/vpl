@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func TestComponent(t *testing.T) {
+func TestBase(t *testing.T) {
 	cases := []struct {
 		Name           string
 		IndexTpl       string

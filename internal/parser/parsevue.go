@@ -10,7 +10,9 @@ import (
 type Prop struct {
 	IsStatic  bool // 是否是静态的(v-bind:语法是动态, 之外是静态)
 	CanBeAttr bool // 是否当成attr输出
-	Key, Val  string
+	Key       string
+	StaticVal interface{} // 静态的value, 如style和class在编译时就会被解析成map和slice
+	Val       string      // valCode 或者 是字符串
 }
 
 type Style struct {
@@ -166,20 +168,24 @@ type VueElement struct {
 	NodeType NodeType
 	Tag      string
 	Text     string
+	// 是否分配调用组件时传递来的属性.
+	// 如果组件中只存在一个root节点, 则此节点会自动分配属性. 否则所有root节点都不会.
+	// (fragments: https://v3.vuejs.org/guide/migration/fragments.html#overview)
+	DistributionAttr bool
 
-	PropClass  *Prop // 动态Class
-	PropStyle  *Prop // 动态style
-	Props      Props // props, 动态和静态, 不包括class和style
+	//PropClass  *Prop // 动态Class
+	//PropStyle  *Prop // 动态style
+	Props      Props // props, 动态和静态, 包括class和style
 	VBind      *VBind
-	Directives Directives    // 自定义指令, 运行时
-	Class      Class         // 静态class
-	Style      Styles        // 静态style
-	Children   []*VueElement // 子节点
-	VIf        *VIf          // 处理v-if需要的数据
-	VFor       *VFor
-	VSlot      *VSlot
-	VElse      bool // 如果是VElse节点则不会生成代码(而是在vif里生成代码)
-	VElseIf    bool
+	Directives Directives // 自定义指令, 运行时
+	//Class      Class         // 静态class
+	//Style      Styles        // 静态style
+	Children []*VueElement // 子节点
+	VIf      *VIf          // 处理v-if需要的数据
+	VFor     *VFor
+	VSlot    *VSlot
+	VElse    bool // 如果是VElse节点则不会生成代码(而是在vif里生成代码)
+	VElseIf  bool
 	// v-html / v-text
 	// 支持v-html / v-text指令覆盖子级内容的组件有: template / html基本标签
 	// component/slot和自定义组件不支持(没有必要)v-html/v-text覆盖子级
@@ -200,7 +206,17 @@ func (p VueElementParser) Parse(e *Node) (*VueElement, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vs[0], nil
+
+	ve := vs[0]
+
+	// 如果只有一个root节点, 则将自动分配attr
+	if len(ve.Children) == 1 {
+		for _, c := range ve.Children {
+			c.DistributionAttr = true
+		}
+	}
+
+	return ve, nil
 }
 
 // 递归处理同级节点
@@ -211,12 +227,12 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 	var ifVueEle *VueElement
 	for _, e := range es {
 		var props Props
-		var propClass *Prop
-		var propStyle *Prop
+		//var propClass *Prop
+		//var propStyle *Prop
 		var vBind *VBind
 		var ds Directives
-		var class []string
-		var styles = Styles{}
+		//var class []string
+		//var styles = Styles{}
 
 		var vIf *VIf
 		var vFor *VFor
@@ -243,16 +259,19 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 
 				// 单独处理class和style
 				if key == "class" {
-					propClass = &Prop{
-						Key: key,
-						Val: attr.Value,
-					}
+					props = append(props, &Prop{
+						IsStatic:  false,
+						CanBeAttr: true,
+						Key:       "class",
+						Val:       attr.Value,
+					})
 				} else if key == "style" {
-					propStyle = &Prop{
-						Key: key,
-						Val: attr.Value,
-					}
-
+					props = append(props, &Prop{
+						IsStatic:  false,
+						CanBeAttr: true,
+						Key:       "style",
+						Val:       attr.Value,
+					})
 				} else {
 					// 动态prosp
 					props = append(props, &Prop{
@@ -352,13 +371,26 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 				}
 			} else if key == "class" {
 				ss := strings.Split(attr.Value, " ")
+				// class的基础类型是[]interface. 和js表达式运行之后的结果类型保持一致.
+				var staticVal []interface{}
 				for _, v := range ss {
 					if v != "" {
-						class = append(class, v)
+						staticVal = append(staticVal, v)
 					}
 				}
+				props = append(props, &Prop{
+					IsStatic:  true,
+					CanBeAttr: true,
+					Key:       "class",
+					//Val:       attr.Value,
+					StaticVal: staticVal,
+				})
+
 			} else if key == "style" {
 				ss := strings.Split(attr.Value, ";")
+				// style的基础类型是map[string]interface{}, 和js表达式运行之后的结果类型保持一致.
+				staticVal := map[string]interface{}{}
+
 				for _, v := range ss {
 					v = strings.Trim(v, " ")
 					ss := strings.Split(v, ":")
@@ -368,14 +400,23 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 					key := strings.Trim(ss[0], " ")
 					val := strings.Trim(ss[1], " ")
 
-					styles.Add(key, val)
+					staticVal[key] = val
 				}
+
+				props = append(props, &Prop{
+					IsStatic:  true,
+					CanBeAttr: true,
+					Key:       "style",
+					//Val:       attr.Value,
+					StaticVal: staticVal,
+				})
 			} else {
 				// 静态props
 				props = append(props, &Prop{
 					CanBeAttr: p.options.CanBeAttr(key),
 					Key:       key,
-					Val:       attr.Value,
+					//Val:       attr.Value,
+					StaticVal: attr.Value,
 					IsStatic:  true,
 				})
 			}
@@ -388,24 +429,24 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 		}
 
 		v := &VueElement{
-			NodeType:   e.NodeType,
-			Tag:        e.Tag,
-			Text:       e.Text,
-			PropClass:  propClass,
-			PropStyle:  propStyle,
+			NodeType: e.NodeType,
+			Tag:      e.Tag,
+			Text:     e.Text,
+			//PropClass:  propClass,
+			//PropStyle:  propStyle,
 			Props:      props,
 			Directives: ds,
-			Class:      class,
-			Style:      styles,
-			Children:   ch,
-			VIf:        vIf,
-			VFor:       vFor,
-			VSlot:      vSlot,
-			VElse:      vElse != nil,
-			VElseIf:    vElseIf != nil,
-			VHtml:      vHtml,
-			VText:      vText,
-			VBind:      vBind,
+			//Class:      class,
+			//Style:      styles,
+			Children: ch,
+			VIf:      vIf,
+			VFor:     vFor,
+			VSlot:    vSlot,
+			VElse:    vElse != nil,
+			VElseIf:  vElseIf != nil,
+			VHtml:    vHtml,
+			VText:    vText,
+			VBind:    vBind,
 		}
 
 		// 记录vif, 接下来的elseif将与这个节点关联
@@ -449,6 +490,21 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 
 // 将html节点转换为Vue节点
 func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err error) {
+	if options == nil {
+		options = &ParseVueNodeOptions{
+			CanBeAttr: func(k string) bool {
+				if k == "id" || k == "class" || k == "style" {
+					return true
+				}
+
+				if strings.HasPrefix(k, "data-") {
+					return true
+				}
+
+				return false
+			},
+		}
+	}
 	return VueElementParser{
 		options: options,
 	}.Parse(node)
@@ -457,16 +513,19 @@ func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err er
 func (p *VueElement) NicePrint(showChild bool, lev int) string {
 	s := strings.Repeat(" ", lev)
 	switch p.NodeType {
-	case ElementNode:
-		s += fmt.Sprintf("<%v %+v", p.Tag, p.Props)
+	case ElementNode, RootNode:
+		s += fmt.Sprintf("<%v", p.Tag)
 		if p.VIf != nil {
 			s += " v-if=" + p.VIf.Condition
 		}
 		if p.VFor != nil {
 			s += " v-for=" + p.VFor.ItemKey
 		}
+		if p.DistributionAttr {
+			s += " DistributionAttr"
+		}
 		if len(p.Props) != 0 {
-			s += fmt.Sprintf(" Props: %+v", p.Props)
+			s += fmt.Sprintf(" Props: %s", nicePrintProps(p.Props))
 		}
 
 		s += ">\n"
@@ -482,7 +541,20 @@ func (p *VueElement) NicePrint(showChild bool, lev int) string {
 		s += fmt.Sprintf("%s\n", p.Text)
 	case DoctypeNode:
 		s += fmt.Sprintf("%s\n", p.Text)
+		//case RootNode:
+		//	s += fmt.Sprintf("<ROOT>\n")
 	}
 
 	return s
+}
+
+func nicePrintProps(p Props) string {
+	var s strings.Builder
+	s.WriteString("[")
+	for _, i := range p {
+		s.WriteString(fmt.Sprintf("%+v, ", i))
+	}
+	s.WriteString("]")
+
+	return s.String()
 }

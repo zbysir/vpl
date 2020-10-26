@@ -48,25 +48,41 @@ func getClassFromProps(classProps interface{}) parser.Class {
 // 将静态props生成attr字符串
 // 用于预编译
 func genAttrFromProps(props parser.Props) string {
-	c := strings.Builder{}
+	s := strings.Builder{}
 	for _, a := range props {
 		if !a.IsStatic {
 			continue
 		}
-		v := a.Val
-		k := a.Key
-
-		if c.Len() != 0 {
-			c.WriteString(" ")
-		}
-		if v != "" {
-			c.WriteString(fmt.Sprintf(`%s="%s"`, k, v))
+		if a.Key == "style" {
+			sty := getStyleFromProps(a.StaticVal)
+			if len(sty) != 0 {
+				if s.Len() != 0 {
+					s.WriteString(" ")
+				}
+				s.WriteString(sty.ToAttr())
+			}
+		} else if a.Key == "class" {
+			cla := getClassFromProps(a.StaticVal)
+			if len(cla) != 0 {
+				if s.Len() != 0 {
+					s.WriteString(" ")
+				}
+				s.WriteString(cla.ToAttr())
+			}
 		} else {
-			c.WriteString(fmt.Sprintf(`%s`, k))
+			if s.Len() != 0 {
+				s.WriteString(" ")
+			}
+			v := a.StaticVal.(string)
+			if v != "" {
+				s.WriteString(fmt.Sprintf(`%s="%s"`, a.Key, v))
+			} else {
+				s.WriteString(fmt.Sprintf(`%s`, a.Key))
+			}
 		}
 	}
 
-	return c.String()
+	return s.String()
 }
 
 // 打印Statement, 方便调试
@@ -87,7 +103,14 @@ func NicePrintStatement(st Statement, lev int) string {
 		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots.Default.Children, lev+1))
 		s += fmt.Sprintf("%s<%s/>\n", index, t.ComponentKey)
 	case *tagStatement:
-		s += fmt.Sprintf("%sTag(%s, %+v)\n", index, t.tag, t.tagStruct.Props)
+		s += fmt.Sprintf("%sTag(%s, %+v", index, t.tag, t.tagStruct.Props)
+		if t.tagStruct.VBind != nil {
+			if t.tagStruct.VBind.useProps {
+				s += fmt.Sprintf(", BindProps")
+			}
+		}
+
+		s += fmt.Sprintf(")\n")
 
 		s += fmt.Sprintf("%s", NicePrintStatement(t.tagStruct.Slots.Default.Children, lev+1))
 

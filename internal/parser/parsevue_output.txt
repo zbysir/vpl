@@ -1,0 +1,9 @@
+<ROOT>
+ <ul DistributionAttr Props: [&{IsStatic:true CanBeAttr:true Key:class StaticVal:[a] Val:}, ]>
+  <li v-if=ifA>
+  <li Props: [&{IsStatic:true CanBeAttr:true Key:about StaticVal:a Val:}, ]>
+   我的名字：{{name}}
+  <li>
+   我的年龄：25
+  <li>
+   我的性别：男

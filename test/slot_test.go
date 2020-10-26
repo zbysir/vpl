@@ -21,7 +21,6 @@ func TestSlot(t *testing.T) {
 		Output  string
 		Checker func(html string) error
 	}{
-
 		{
 			// 测试 slot
 			// - 具名插槽
@@ -81,7 +80,7 @@ func TestSlot(t *testing.T) {
 
 			props := vpl.NewProps()
 			props.AppendMap(map[string]interface{}{
-				"id":      "helloID",
+				"id": "helloID",
 				"infos": []interface{}{
 					map[string]interface{}{
 						"id":    "sex",
