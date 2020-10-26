@@ -2,7 +2,7 @@ Tag(div, [], BindProps)
   <div class="c">Text</div>
   Tag(div, [id(attr): id])
     Infos:
-    Tag(ul, [class(attr): 'c' + ulClass])
+    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b]])
       If(ifStart)
         <li about="a">Start<span>span</span></li>
       Else

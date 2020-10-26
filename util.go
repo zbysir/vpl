@@ -100,7 +100,9 @@ func NicePrintStatement(st Statement, lev int) string {
 		}
 	case *ComponentStatement:
 		s += fmt.Sprintf("%s<%s>\n", index, t.ComponentKey)
-		s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots.Default.Children, lev+1))
+		if t.ComponentStruct.Slots.Default!=nil{
+			s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots.Default.Children, lev+1))
+		}
 		s += fmt.Sprintf("%s<%s/>\n", index, t.ComponentKey)
 	case *tagStatement:
 		s += fmt.Sprintf("%sTag(%s, %+v", index, t.tag, t.tagStruct.Props)

@@ -15,7 +15,7 @@ func TestSimpleNodeVue(t *testing.T) {
 	</div>
 	<div :id="id">
 		Infos:
-		<ul :class="'c' + ulClass">
+		<ul :class="'c' + ulClass" class="b">
 			<li v-if="ifStart" about=a>Start <span> span </span></li>
 			<li v-else about=b>Not Start</li>
 			<li v-for="item in infos" :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
@@ -26,20 +26,21 @@ func TestSimpleNodeVue(t *testing.T) {
 `
 
 	// 将会优化成另一个AST:
-	// <div class="c">Text</div>
-	// Tag(div, [id: id])
-	//   Infos:
-	//   Tag(ul, [])
-	//     If(ifStart)
-	//       <li about="a">Start<span>span</span></li>
-	//     Else
-	//       <li about="b">Not Start</li>
-	//     For(item in infos)
-	//       Tag(li, [id: item.id, key: item.id])
-	//         {{item.label}}
-	//         :
-	//         {{item.value}}
-	//     <li>End</li>
+	// Tag(div, [], BindProps)
+	//  <div class="c">Text</div>
+	//  Tag(div, [id(attr): id])
+	//    Infos:
+	//    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b]])
+	//      If(ifStart)
+	//        <li about="a">Start<span>span</span></li>
+	//      Else
+	//        <li about="b">Not Start</li>
+	//      For(item in infos)
+	//        Tag(li, [id(attr): item.id, key: item.id])
+	//          {{item.label}}
+	//          :
+	//          {{item.value}}
+	//      <li>End</li>
 
 	nt, err := parser.ParseHtml(rawPageHtml)
 	if err != nil {

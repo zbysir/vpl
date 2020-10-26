@@ -331,6 +331,8 @@ func TestRender(t *testing.T) {
 // -- 2020-10-24 优化slot存储方式
 // 386870 ns/op	  339223 B/op	    5268 allocs/op(MAC)
 // 400494 ns/op	  327072 B/op	    5266 allocs/op(Win)
+// -- 2020-10-16 支持分发props为attr
+// 495476 ns/op	  379483 B/op	    6279 allocs/op(WIN)
 func BenchmarkRender(b *testing.B) {
 	b.ReportAllocs()
 	vue := vpl.New()
