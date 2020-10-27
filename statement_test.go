@@ -9,14 +9,10 @@ import (
 
 func TestSimpleNodeVue(t *testing.T) {
 	const rawPageHtml = `
-  <div v-bind:class="{'a': true}" class="b">
-    <span class="d" v-bind:class="{c: true}" :a="1">
-        {{data.msg}}
-    </span>
-    <div v-for="item in data.c">
-      <main :data="item"></main>
-    </div>
-  </div>
+<body>
+<div v-html="html"></div>
+<template v-text="html"></template>
+</body>
 `
 
 	// 将会优化成另一个AST:

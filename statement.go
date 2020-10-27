@@ -621,54 +621,25 @@ type tagStatement struct {
 	tagStruct tagStruct
 }
 
-func execDirectives(ds directivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
-	rCtx := ctxPool.Get().(*RenderCtx)
-	rCtx.Store = ctx.Store
-	rCtx.Scope = scope
-	defer ctxPool.Put(rCtx)
-
-	for _, v := range ds {
-		val := v.Value.Exec(rCtx)
-		d, exist := ctx.Directives[v.Name]
-		if exist {
-			d(
-				rCtx,
-				o,
-				&DirectivesBinding{
-					Value: val,
-					Arg:   v.Arg,
-					Name:  v.Name,
-				},
-			)
-		}
-
-	}
-}
-
-type Class = parser.Class
-type Styles = parser.Styles
-
-type NodeData struct {
-	Props *Props // 给组件添加attr
-	//Class *Class //
-	//Style *Styles
-	Slots *Slots
-}
-
 // 如果tag没有指令, 则也不需要生成props, 而是将propsC直接运行成为attr.
 func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
-
 	var style map[string]interface{}
-	class := []string{}
-
+	var class strings.Builder
 	if len(t.tagStruct.Props) != 0 {
+
 		for _, p := range t.tagStruct.Props {
 			if p.CanBeAttr {
 				if p.Key == "class" {
-
+					if p.IsStatic {
+						ctx.W.WriteString(` class="`)
+						ctx.W.WriteString(p.ValStatic)
+						ctx.W.WriteString(`"`)
+					} else {
+						writeClass(p.Val.Exec(rCtx), &class)
+					}
 				} else if p.Key == "style" {
 					if p.IsStatic {
-						ctx.W.WriteString(`style="`)
+						ctx.W.WriteString(` style="`)
 						ctx.W.WriteString(p.ValStatic)
 						ctx.W.WriteString(`"`)
 					} else {
@@ -683,38 +654,121 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 							}
 						}
 					}
-				}
+				} else {
+					ctx.W.WriteString(` `)
 
-				ctx.W.WriteString(p.Key)
+					ctx.W.WriteString(p.Key)
 
-				if p.IsStatic {
-					if p.ValStatic != "" {
+					if p.IsStatic {
+						if p.ValStatic != "" {
+							ctx.W.WriteString(`="`)
+							ctx.W.WriteString(p.ValStatic)
+							ctx.W.WriteString(`"`)
+						}
+					} else {
+						v := p.Val.Exec(rCtx)
 						ctx.W.WriteString(`="`)
-						ctx.W.WriteString(p.ValStatic)
+
+						switch v := v.(type) {
+						case string:
+							ctx.W.WriteString(v)
+						default:
+							ctx.W.WriteString(util.InterfaceToStr(v, true))
+						}
 						ctx.W.WriteString(`"`)
 					}
-				} else {
-					v := p.Val.Exec(rCtx)
-					ctx.W.WriteString(`="`)
-
-					switch v := v.(type) {
-					case string:
-						ctx.W.WriteString(v)
-					default:
-						ctx.W.WriteString(util.InterfaceToStr(v, true))
-					}
-					ctx.W.WriteString(`"`)
-				}
-
-				if p.Val != nil {
-
 				}
 			}
 		}
 	}
 
+	// 可能需要将 props和vBind中重复的attr去重
+	if t.tagStruct.VBind != nil {
+		var b interface{}
+		if t.tagStruct.VBind.useProps {
+			b = rCtx.Scope.Get("$props")
+		} else {
+			b = t.tagStruct.VBind.val.Exec(rCtx)
+		}
+
+		switch t := b.(type) {
+		case map[string]interface{}:
+			for k, v := range t {
+				if k == "class" {
+					writeClass(v, &class)
+				} else if k == "style" {
+					switch t := v.(type) {
+					case map[string]interface{}:
+						if style == nil {
+							style = t
+						} else {
+							for k, v := range t {
+								style[k] = v
+							}
+						}
+					}
+				} else {
+					if ctx.CanBeAttrsKey(k) {
+						ctx.W.WriteString(` `)
+						ctx.W.WriteString(k)
+						ctx.W.WriteString(`="`)
+
+						switch v := v.(type) {
+						case string:
+							ctx.W.WriteString(v)
+						default:
+							ctx.W.WriteString(util.InterfaceToStr(v, true))
+						}
+						ctx.W.WriteString(`"`)
+					}
+				}
+			}
+		case skipMarshalMap:
+			for k, v := range t {
+				if k == "class" {
+					writeClass(v, &class)
+				} else if k == "style" {
+					switch t := v.(type) {
+					case map[string]interface{}:
+						if style == nil {
+							style = t
+						} else {
+							for k, v := range t {
+								style[k] = v
+							}
+						}
+					}
+				} else {
+					if ctx.CanBeAttrsKey(k) {
+						ctx.W.WriteString(` `)
+						ctx.W.WriteString(k)
+						ctx.W.WriteString(`="`)
+
+						switch v := v.(type) {
+						case string:
+							ctx.W.WriteString(v)
+						default:
+							ctx.W.WriteString(util.InterfaceToStr(v, true))
+						}
+						ctx.W.WriteString(`"`)
+					}
+				}
+			}
+		default:
+			panic(fmt.Sprintf("bad Type of Vbind: %T", b))
+		}
+
+		//t.tagStruct.VBind.execTo(rCtx, props)
+	}
+
+	if class.Len() != 0 {
+		ctx.W.WriteString(` class="`)
+		ctx.W.WriteString(class.String())
+		ctx.W.WriteString(`"`)
+	}
+
 	if len(style) != 0 {
-		ctx.W.WriteString(`style="`)
+		ctx.W.WriteString(` style="`)
 		sortedKeys := util.GetSortedKey(style)
 		var st strings.Builder
 		for _, k := range sortedKeys {
@@ -779,71 +833,72 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			Slots: slots,
 		})
 
-		firstAttr := true
-		props.ForEach(func(index int, k *PropKeys, v interface{}) {
-			// 跳过scope内置的$props字段
-			// 如果在编译期就确定了不能被转为attr, 则始终不能
-			// 如果无法在编译期间确定(如 通过props.AppendMap()的方式添加的props/通过v-bind="$props"方式而来的props), 则还需要再次调用函数判断
-			if k.AttrWay == CanNotBeAttr {
-				return
-			}
-			if k.AttrWay == MayBeAttr {
-				// style和class字段始终会作为attr
-				if k.Key != "style" && k.Key != "class" {
-					if !ctx.CanBeAttrsKey(k.Key) {
-						return
+		if props != nil {
+			firstAttr := true
+			props.ForEach(func(index int, k *PropKeys, v interface{}) {
+				// 如果在编译期就确定了不能被转为attr, 则始终不能
+				// 如果无法在编译期间确定(如 通过props.AppendMap()的方式添加的props/通过v-bind="$props"方式而来的props), 则还需要再次调用函数判断
+				if k.AttrWay == CanNotBeAttr {
+					return
+				}
+				if k.AttrWay == MayBeAttr {
+					// style和class字段始终会作为attr
+					if k.Key != "style" && k.Key != "class" {
+						if !ctx.CanBeAttrsKey(k.Key) {
+							return
+						}
 					}
 				}
-			}
 
-			if k.Key == "style" {
-				if v != nil {
+				if k.Key == "style" {
+					if v != nil {
+						if firstAttr {
+							ctx.W.WriteString(" ")
+							firstAttr = false
+						}
+
+						ctx.W.WriteString(`style="`)
+						var s strings.Builder
+						writeStyle(v, &s)
+						ctx.W.WriteString(s.String())
+						ctx.W.WriteString(`"`)
+					}
+				} else if k.Key == "class" {
+					if v != nil {
+						if firstAttr {
+							ctx.W.WriteString(" ")
+							firstAttr = false
+						}
+
+						ctx.W.WriteString(`class="`)
+						var s strings.Builder
+						writeClass(v, &s)
+						ctx.W.WriteString(s.String())
+						ctx.W.WriteString(`"`)
+					}
+				} else {
 					if firstAttr {
 						ctx.W.WriteString(" ")
 						firstAttr = false
 					}
 
-					ctx.W.WriteString(`style="`)
-					var s strings.Builder
-					writeStyle(v, &s)
-					ctx.W.WriteString(s.String())
-					ctx.W.WriteString(`"`)
-				}
-			} else if k.Key == "class" {
-				if v != nil {
-					if firstAttr {
-						ctx.W.WriteString(" ")
-						firstAttr = false
+					ctx.W.WriteString(k.Key)
+
+					if v != nil {
+						ctx.W.WriteString(`="`)
+
+						switch v := v.(type) {
+						case string:
+							ctx.W.WriteString(v)
+						default:
+							ctx.W.WriteString(util.InterfaceToStr(v, true))
+						}
+						ctx.W.WriteString(`"`)
 					}
-
-					ctx.W.WriteString(`class="`)
-					var s strings.Builder
-					writeClass(v, &s)
-					ctx.W.WriteString(s.String())
-					ctx.W.WriteString(`"`)
-				}
-			} else {
-				if firstAttr {
-					ctx.W.WriteString(" ")
-					firstAttr = false
 				}
 
-				ctx.W.WriteString(k.Key)
-
-				if v != nil {
-					ctx.W.WriteString(`="`)
-
-					switch v := v.(type) {
-					case string:
-						ctx.W.WriteString(v)
-					default:
-						ctx.W.WriteString(util.InterfaceToStr(v, true))
-					}
-					ctx.W.WriteString(`"`)
-				}
-			}
-
-		})
+			})
+		}
 
 	} else {
 		err := t.ExecAttr(ctx, rCtx)
@@ -867,6 +922,38 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 	ctx.W.WriteString("</" + t.tag + ">")
 	return nil
+}
+
+func execDirectives(ds directivesC, ctx *StatementCtx, scope *Scope, o *NodeData) {
+	rCtx := ctxPool.Get().(*RenderCtx)
+	rCtx.Store = ctx.Store
+	rCtx.Scope = scope
+	defer ctxPool.Put(rCtx)
+
+	for _, v := range ds {
+		val := v.Value.Exec(rCtx)
+		d, exist := ctx.Directives[v.Name]
+		if exist {
+			d(
+				rCtx,
+				o,
+				&DirectivesBinding{
+					Value: val,
+					Arg:   v.Arg,
+					Name:  v.Name,
+				},
+			)
+		}
+
+	}
+}
+
+type Class = parser.Class
+type Styles = parser.Styles
+
+type NodeData struct {
+	Props *Props // 给组件添加attr
+	Slots *Slots
 }
 
 // 支持的格式: map[string]interface{}

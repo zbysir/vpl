@@ -178,7 +178,7 @@ func NicePrintStatement(st Statement, lev int) string {
 	case *mustacheStatement:
 		s += fmt.Sprintf("%s{{%s}}\n", index, t.exp)
 	case *rawHtmlStatement:
-		s += fmt.Sprintf("%s{{%s}}\n", index, t.exp)
+		s += fmt.Sprintf("%s{{{%s}}}\n", index, t.exp)
 	default:
 
 	}

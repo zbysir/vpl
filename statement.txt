@@ -1,8 +1,6 @@
-Tag(div, [class(attr): {'a': true}, class(attr): [b]], BindProps)
-  Tag(span, [class(attr): [d], class(attr): {c: true}, a: 1])
-    {{data.msg}}
-  For(item in data.c)
-    <div>
-    <main>
-    <main/>
-    </div>
+Tag(body, [], BindProps)
+  Tag(div, [])
+    {{{html}}}
+  <template>
+    {{html}}
+  <template/>

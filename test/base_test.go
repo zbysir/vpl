@@ -136,16 +136,7 @@ func TestBase(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			vue := vpl.New(vpl.WithCanBeAttrsKey(func(k string) bool {
-				if k == "id" {
-					return true
-				}
-				if strings.HasPrefix(k, "data") {
-					return true
-				}
-
-				return false
-			}))
+			vue := vpl.New()
 			t.Logf("compile....")
 
 			for _, tp := range c.Tpl {
@@ -288,6 +279,8 @@ func TestRender(t *testing.T) {
 // 400494 ns/op	  327072 B/op	    5266 allocs/op(Win)
 // -- 2020-10-16 支持分发props为attr
 // 495476 ns/op	  379483 B/op	    6279 allocs/op(WIN)
+// -- 2020-10-27 优化在tag上的props执行
+// 323031 ns/op	  227109 B/op	    3448 allocs/op
 func BenchmarkRender(b *testing.B) {
 	b.ReportAllocs()
 	vue := vpl.New()

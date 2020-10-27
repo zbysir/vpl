@@ -2,10 +2,12 @@ package test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -37,7 +39,7 @@ func TestClassStyle(t *testing.T) {
   <title>Title</title>
 </head>
 <body>
-<div class="a" :class="css">
+<div class="a" style="top: 1px" :class="'b'">
 	Text
 </div>
 <div style="top: 10px" :style="{color: color}">
@@ -49,6 +51,17 @@ func TestClassStyle(t *testing.T) {
 `,
 			}},
 			Output: "output/%s.html",
+			Checker: func(html string) error {
+				if !strings.Contains(html, `style="color: red; top: 10px;"`) {
+					return errors.New("处理style有误")
+				}
+
+				if !strings.Contains(html, `class="a b"`) {
+					return errors.New("处理class有误")
+				}
+
+				return nil
+			},
 		},
 	}
 
