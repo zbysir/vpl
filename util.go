@@ -59,7 +59,9 @@ func genAttrFromProps(props parser.Props) string {
 				if s.Len() != 0 {
 					s.WriteString(" ")
 				}
+				s.WriteString(`style="`)
 				s.WriteString(sty.ToAttr())
+				s.WriteString(`"`)
 			}
 		} else if a.Key == "class" {
 			cla := getClassFromProps(a.StaticVal)
@@ -67,7 +69,9 @@ func genAttrFromProps(props parser.Props) string {
 				if s.Len() != 0 {
 					s.WriteString(" ")
 				}
+				s.WriteString(`class="`)
 				s.WriteString(cla.ToAttr())
+				s.WriteString(`"`)
 			}
 		} else {
 			if s.Len() != 0 {

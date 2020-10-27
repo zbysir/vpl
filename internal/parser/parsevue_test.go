@@ -9,7 +9,7 @@ import (
 func TestToVue(t *testing.T) {
 	const rawPageHtml = `
 <ul class="a">
-	<li v-if="ifA"></li>
+	<li v-if="ifA" style="color: red"></li>
 	<li about="a">我的名字：{{name}}</li>
 	<li>我的年龄：25</li>
 	<li>我的性别：男</li>

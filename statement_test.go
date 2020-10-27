@@ -9,13 +9,13 @@ import (
 
 func TestSimpleNodeVue(t *testing.T) {
 	const rawPageHtml = `
-<div>
+<div style="color: red">
 	<div class="c">
 		Text
 	</div>
-	<div :id="id">
+	<div :id="id" style="color: red" :style="{'a': 1}">
 		Infos:
-		<ul :class="'c' + ulClass" class="b">
+		<ul :class="'c' + ulClass" class="b" style="color: red" >
 			<li v-if="ifStart" about=a>Start <span> span </span></li>
 			<li v-else about=b>Not Start</li>
 			<li v-for="item in infos" :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>

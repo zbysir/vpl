@@ -255,7 +255,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 			PropClass: nil,
 			PropStyle: nil,
 			// 将所有Props传递到组件中
-			VBind:      &vBindC{val: newRawExpression(p.Props)},
+			VBind:      &vBindC{useProps: true},
 			Directives: nil,
 			Slots:      nil,
 		},
@@ -277,12 +277,15 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 		Directives:    v.directives,
 		CanBeAttrsKey: v.canBeAttrsKey,
 	}
+
+	scope := v.NewScope()
+	scope.Set("$props", p.Props)
 	err = statement.Exec(ctx, &StatementOptions{
 		Slots:     nil,
-		Props:     nil,
+		Props:     p.Props,
 		PropClass: nil,
 		PropStyle: nil,
-		Scope:     nil,
+		Scope:     scope,
 		Parent:    nil,
 	})
 

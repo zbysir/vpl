@@ -70,53 +70,8 @@ func TestBase(t *testing.T) {
 			}},
 			Output: "output/%s.html",
 			Checker: func(html string) error {
-				if !strings.Contains(html, `class="b t d cuuu a"`) {
+				if !strings.Contains(html, `class="t d cuuu b a b"`) {
 					return errors.New("处理class有误")
-				}
-
-				return nil
-			},
-		},
-		{
-			// 测试组件
-			Name: "component",
-			//IndexTpl: "<main></main>",
-			IndexComponent: `main`,
-			Tpl: []struct {
-				Name string
-				Txt  string
-			}{
-				{
-					Name: "main",
-					Txt: `
-<div :id="id">
-	Infos:
-	<Infos :infos="infos" id=123></Infos>
-	<InfosX :infos="infos">我是错误的组件 {{infos.length}}</Infos>
-</div>`,
-				},
-				{
-					Name: "Infos",
-					Txt: `
-<!-- vue使用 v-bind="$attrs" 将属性放置到tag上, 但vpl不能区分attrs和props, 所以只能使用props. -->
-<!-- 可以通过设置WithCanBeAttrsKey()来设置那些propsKey可以输出为attrs -->
-<div v-bind="$props">
-	<template v-for="item in infos">
-		{{$index}}
-		<li  :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
-	</template>
-</div>
-`,
-				},
-			},
-			Output: "output/%s.html",
-			Checker: func(html string) error {
-				if !strings.Contains(html, `性别: 男`) {
-					return errors.New("调用组件有误")
-				}
-
-				if !strings.Contains(html, `是错误的组件 2`) {
-					return errors.New("处理Slot有误")
 				}
 
 				return nil

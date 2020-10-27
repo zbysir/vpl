@@ -1,7 +1,7 @@
 <ROOT>
- <ul DistributionAttr Props: [&{IsStatic:true CanBeAttr:true Key:class StaticVal:[a] Val:}, ]>
-  <li v-if=ifA>
-  <li Props: [&{IsStatic:true CanBeAttr:true Key:about StaticVal:a Val:}, ]>
+ <ul DistributionAttr Props: [&{IsStatic:true CanBeAttr:true Key:class StaticVal:[a] ValCode:}, ]>
+  <li v-if=ifA Props: [&{IsStatic:true CanBeAttr:true Key:style StaticVal:map[color:red] ValCode:}, ]>
+  <li Props: [&{IsStatic:true CanBeAttr:true Key:about StaticVal:a ValCode:}, ]>
    我的名字：{{name}}
   <li>
    我的年龄：25

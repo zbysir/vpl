@@ -12,7 +12,7 @@ type Prop struct {
 	CanBeAttr bool // 是否当成attr输出
 	Key       string
 	StaticVal interface{} // 静态的value, 如style和class在编译时就会被解析成map和slice
-	Val       string      // valCode 或者 是字符串
+	ValCode   string      // 如果props是动态的, valCode存储js表达式
 }
 
 type Style struct {
@@ -37,7 +37,7 @@ func (p Styles) ToAttr() string {
 		}
 		st.WriteString(k + ": " + v + ";")
 	}
-	return `style="` + st.String() + `"`
+	return st.String()
 }
 
 func (p Styles) Add(key string, val string) {
@@ -59,7 +59,7 @@ func (p Styles) Del(key string) {
 type Class []string
 
 func (c Class) ToAttr() string {
-	return `class="` + strings.Join(c, " ") + `"`
+	return strings.Join(c, " ")
 }
 
 func (c *Class) Remove(i string) {
@@ -99,7 +99,7 @@ type Directives []Directive
 func (p Props) Get(key string) (val string, exist bool) {
 	for _, v := range p {
 		if v.Key == key {
-			return v.Val, true
+			return v.ValCode, true
 		}
 	}
 	return
@@ -263,14 +263,14 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 						IsStatic:  false,
 						CanBeAttr: true,
 						Key:       "class",
-						Val:       attr.Value,
+						ValCode:   attr.Value,
 					})
 				} else if key == "style" {
 					props = append(props, &Prop{
 						IsStatic:  false,
 						CanBeAttr: true,
 						Key:       "style",
-						Val:       attr.Value,
+						ValCode:   attr.Value,
 					})
 				} else {
 					// 动态prosp
@@ -278,7 +278,7 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 						IsStatic:  false,
 						CanBeAttr: p.options.CanBeAttr(key),
 						Key:       key,
-						Val:       attr.Value,
+						ValCode:   attr.Value,
 					})
 				}
 			} else if strings.HasPrefix(oriKey, "v-") {

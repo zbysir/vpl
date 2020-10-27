@@ -1,8 +1,8 @@
-Tag(div, [], BindProps)
+Tag(div, [style(attr): map[color:red]], BindProps)
   <div class="c">Text</div>
-  Tag(div, [id(attr): id])
+  Tag(div, [id(attr): id, style(attr): map[color:red], style(attr): {'a': 1}])
     Infos:
-    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b]])
+    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b], style(attr): color: red;])
       If(ifStart)
         <li about="a">Start<span>span</span></li>
       Else

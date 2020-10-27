@@ -89,6 +89,8 @@ type propC struct {
 	CanBeAttr bool
 	Key       string
 	Val       expression
+	IsStatic  bool
+	ValStatic string // 如果Prop是静态的, 那么会在编译时优化为字符串
 }
 
 type propsC []*propC
@@ -101,7 +103,13 @@ func (r propsC) String() string {
 		if v.CanBeAttr {
 			beAttr = "(attr)"
 		}
-		str += fmt.Sprintf("%+v%v: %v, ", v.Key, beAttr, v.Val)
+		var val interface{} = v.Val
+
+		if v.IsStatic {
+			val = v.ValStatic
+		}
+
+		str += fmt.Sprintf("%+v%v: %v, ", v.Key, beAttr, val)
 	}
 	str = strings.TrimSuffix(str, ", ")
 	str += "]"
@@ -140,7 +148,11 @@ func (r *propC) exec(ctx *RenderCtx) *Prop {
 	if r == nil {
 		return &Prop{}
 	}
-	return &Prop{Key: r.Key, Val: r.Val.Exec(ctx)}
+	if r.IsStatic {
+		return &Prop{Key: r.Key, Val: r.ValStatic}
+	} else {
+		return &Prop{Key: r.Key, Val: r.Val.Exec(ctx)}
+	}
 }
 
 // 数值Prop
@@ -255,7 +267,7 @@ func margeClass(a interface{}, b interface{}) (d interface{}) {
 	}
 
 	if bt, ok := b.([]interface{}); ok {
-		ar = append(ar, bt)
+		ar = append(ar, bt...)
 	}
 	return ar
 }
@@ -306,10 +318,31 @@ func (r *Props) Get(key string) (interface{}, bool) {
 	return v, exist
 }
 
-func compileProps(p parser.Props) (propsC, error) {
+// 如果 style和class动态与静态不冲突, 则可以将静态style/class优化为 string
+func compileProps(p parser.Props, staticProp bool) (propsC, error) {
 	pc := make(propsC, len(p))
+	hasBindStyle := false
+	hasBindClass := false
+	for _, v := range p {
+		if !v.IsStatic && v.Key == "class" {
+			hasBindClass = true
+		}
+		if !v.IsStatic && v.Key == "style" {
+			hasBindStyle = true
+		}
+	}
 	for i, v := range p {
-		p, err := compileProp(v)
+		static := staticProp
+		if staticProp {
+			if v.Key == "class" && v.IsStatic && hasBindClass {
+				static = false
+			}
+			if v.Key == "style" && v.IsStatic && hasBindStyle {
+				static = false
+			}
+		}
+
+		p, err := compileProp(v, static)
 		if err != nil {
 			return nil, err
 		}
@@ -318,32 +351,43 @@ func compileProps(p parser.Props) (propsC, error) {
 	return pc, nil
 }
 
-// TODO 如果 style和class动态与静态不冲突, 则可以将静态style/class优化为 string
-func compileProp(p *parser.Prop) (*propC, error) {
+func compileProp(p *parser.Prop, staticProp bool) (*propC, error) {
 	if p == nil {
 		return nil, nil
 	}
-	var valExpression expression
 
+	pc := &propC{
+		Key:       p.Key,
+		CanBeAttr: p.CanBeAttr,
+	}
 	if p.IsStatic {
-		valExpression = &rawExpression{raw: p.StaticVal}
+		// 如果是静态的, 并且需要优化为字符串, 则修改为字符串
+		if staticProp {
+			switch p.Key {
+			case "style":
+				pc.ValStatic = getStyleFromProps(p.StaticVal).ToAttr()
+			case "class":
+				pc.ValStatic = getClassFromProps(p.StaticVal).ToAttr()
+			default:
+				pc.ValStatic = p.StaticVal.(string)
+			}
+			pc.IsStatic = true
+		} else {
+			pc.Val = newRawExpression(p.StaticVal)
+		}
 	} else {
-		if p.Val != "" {
-			node, err := compileJS(p.Val)
+		if p.ValCode != "" {
+			node, err := compileJS(p.ValCode)
 			if err != nil {
 				return nil, fmt.Errorf("parseJs err: %w", err)
 			}
-			valExpression = &jsExpression{node: node, code: p.Val}
+			pc.Val = &jsExpression{node: node, code: p.ValCode}
 		} else {
-			valExpression = &nullExpression{}
+			pc.Val = &nullExpression{}
 		}
 	}
 
-	return &propC{
-		Key:       p.Key,
-		Val:       valExpression,
-		CanBeAttr: p.CanBeAttr,
-	}, nil
+	return pc, nil
 }
 
 func compileVBind(v *parser.VBind) (*vBindC, error) {
@@ -677,12 +721,14 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		}
 
 		if k.Key == "style" {
-			cla := getStyleFromProps(v)
-			if len(cla) != 0 {
+			sty := getStyleFromProps(v)
+			if len(sty) != 0 {
 				if attrs.Len() != 0 {
 					attrs.Write([]byte(" "))
 				}
-				attrs.WriteString(cla.ToAttr())
+				attrs.WriteString(`style="`)
+				attrs.WriteString(sty.ToAttr())
+				attrs.WriteString(`"`)
 			}
 		} else if k.Key == "class" {
 			cla := getClassFromProps(v)
@@ -690,7 +736,9 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 				if attrs.Len() != 0 {
 					attrs.Write([]byte(" "))
 				}
+				attrs.WriteString(`class="`)
 				attrs.WriteString(cla.ToAttr())
+				attrs.WriteString(`"`)
 			}
 		} else {
 			if attrs.Len() != 0 {
@@ -1385,7 +1433,7 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 				//	return nil, nil, err
 				//}
 
-				p, err := compileProps(v.Props)
+				p, err := compileProps(v.Props, !v.DistributionAttr && v.VBind==nil)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -1480,7 +1528,7 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 			//	return nil, nil, err
 			//}
 
-			p, err := compileProps(v.Props)
+			p, err := compileProps(v.Props, !v.DistributionAttr && v.VBind==nil)
 			if err != nil {
 				return nil, nil, err
 			}
