@@ -122,40 +122,56 @@ func InterfaceToBool(s interface{}) (d bool) {
 	}
 }
 
-func Interface2Slice(s interface{}) (d []interface{}) {
+func ForInterface(s interface{}, cb func(index int, v interface{}) error) error {
 	switch a := s.(type) {
 	case []interface{}:
-		return a
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
+		}
 	case []map[string]interface{}:
-		d = make([]interface{}, len(a))
-		for i, v := range a {
-			d[i] = v
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
 		}
 	case []int:
-		d = make([]interface{}, len(a))
-		for i, v := range a {
-			d[i] = v
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
 		}
 	case []int64:
-		d = make([]interface{}, len(a))
-		for i, v := range a {
-			d[i] = v
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
 		}
 	case []int32:
-		d = make([]interface{}, len(a))
-		for i, v := range a {
-			d[i] = v
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
 		}
 	case []string:
-		d = make([]interface{}, len(a))
-		for i, v := range a {
-			d[i] = v
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
 		}
 	case []float64:
-		d = make([]interface{}, len(a))
-		for i, v := range a {
-			d[i] = v
+		for i := range a {
+			if err := cb(i, a[i]); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
+}
+
+func Interface2Slice(s interface{}) (d []interface{}) {
+
 	return
 }

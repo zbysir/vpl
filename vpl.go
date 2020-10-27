@@ -121,7 +121,7 @@ func New(options ...Options) *Vpl {
 				return nil
 			}),
 		},
-		prototype:  NewScope(),
+		prototype:  NewScope(nil),
 		directives: map[string]Directive{},
 	}
 
@@ -191,8 +191,7 @@ func (v *Vpl) Directive(name string, val Directive) () {
 }
 
 func (v *Vpl) NewScope() *Scope {
-	s := NewScope()
-	s.Parent = v.prototype
+	s := NewScope(v.prototype)
 	return s
 }
 
@@ -207,8 +206,7 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 
 	var w = NewListWriter()
 
-	global := NewScope()
-	global.Parent = v.prototype
+	global := v.NewScope()
 
 	if p.Global != nil {
 		global = global.Extend(p.Global)
@@ -230,12 +228,10 @@ func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
 	scope.Set("$props", skipMarshalMap(propsMap))
 
 	err = statement.Exec(ctx, &StatementOptions{
-		Slots:     nil,
-		Props:     p.Props,
-		PropClass: nil,
-		PropStyle: nil,
-		Scope:     scope,
-		Parent:    nil,
+		Slots:  nil,
+		Props:  p.Props,
+		Scope:  scope,
+		Parent: nil,
 	})
 
 	if err != nil {
@@ -252,8 +248,6 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 		ComponentKey: component,
 		ComponentStruct: ComponentStruct{
 			Props:     nil,
-			PropClass: nil,
-			PropStyle: nil,
 			// 将所有Props传递到组件中
 			VBind:      &vBindC{useProps: true},
 			Directives: nil,
@@ -283,8 +277,6 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 	err = statement.Exec(ctx, &StatementOptions{
 		Slots:     nil,
 		Props:     p.Props,
-		PropClass: nil,
-		PropStyle: nil,
 		Scope:     scope,
 		Parent:    nil,
 	})

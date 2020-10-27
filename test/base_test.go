@@ -70,7 +70,7 @@ func TestBase(t *testing.T) {
 			}},
 			Output: "output/%s.html",
 			Checker: func(html string) error {
-				if !strings.Contains(html, `class="t d cuuu b a b"`) {
+				if !strings.Contains(html, `class="t d cuuu b a b`) {
 					return errors.New("处理class有误")
 				}
 
@@ -224,7 +224,7 @@ func TestRender(t *testing.T) {
 	err := vue.ComponentTxt("main", `
   <div v-bind:class="{'a': true}" class="b">
 	<h1 :a='1'></h1>
-    <div v-for="item in data.c" >
+    <div v-for="item in data.c" :class='""+$index'>
       {{item.msg}} {{$props.a}}
     </div>
   </div>
@@ -238,7 +238,7 @@ func TestRender(t *testing.T) {
 	// 生成10000个数据
 	index := 0
 	var ds []*data
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 2; i++ {
 		ds = append(ds, &data{
 			C:   nil,
 			Msg: fmt.Sprintf("%d", index),

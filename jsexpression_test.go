@@ -44,7 +44,7 @@ func TestRunJs(t *testing.T) {
 		{Code: "concat(1,2)", Value: "12"},
 	}
 
-	scope := NewScope()
+	scope := NewScope(nil)
 	scope.Value = map[string]interface{}{
 		"a": 1,
 		"info": map[string]interface{}{

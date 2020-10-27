@@ -45,6 +45,45 @@ func getClassFromProps(classProps interface{}) parser.Class {
 	return cs
 }
 
+func writeClass(classProps interface{}, w *strings.Builder) {
+	if classProps == nil {
+		return
+	}
+	switch t := classProps.(type) {
+	case []string:
+		for _, c := range t {
+			if w.Len() != 0 {
+				w.WriteString(" ")
+			}
+			w.WriteString(util.Escape(c))
+		}
+	case string:
+		if w.Len() != 0 {
+			w.WriteString(" ")
+		}
+		w.WriteString(util.Escape(t))
+
+	case map[string]interface{}:
+		c := make([]string, 0, len(t)/2)
+		for k, v := range t {
+			if util.InterfaceToBool(v) {
+				c = append(c, k)
+			}
+		}
+		sort.Strings(c)
+		for _, c := range c {
+			if w.Len() != 0 {
+				w.WriteString(" ")
+			}
+			w.WriteString(util.Escape(c))
+		}
+	case []interface{}:
+		for _, v := range t {
+			writeClass(v, w)
+		}
+	}
+}
+
 // 将静态props生成attr字符串
 // 用于预编译
 func genAttrFromProps(props parser.Props) string {
@@ -104,7 +143,7 @@ func NicePrintStatement(st Statement, lev int) string {
 		}
 	case *ComponentStatement:
 		s += fmt.Sprintf("%s<%s>\n", index, t.ComponentKey)
-		if t.ComponentStruct.Slots.Default!=nil{
+		if t.ComponentStruct.Slots.Default != nil {
 			s += fmt.Sprintf("%s", NicePrintStatement(t.ComponentStruct.Slots.Default.Children, lev+1))
 		}
 		s += fmt.Sprintf("%s<%s/>\n", index, t.ComponentKey)

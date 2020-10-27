@@ -1,15 +1,8 @@
-Tag(div, [style(attr): map[color:red]], BindProps)
-  <div class="c">Text</div>
-  Tag(div, [id(attr): id, style(attr): map[color:red], style(attr): {'a': 1}])
-    Infos:
-    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b], style(attr): color: red;])
-      If(ifStart)
-        <li about="a">Start<span>span</span></li>
-      Else
-        <li about="b">Not Start</li>
-      For(item in infos)
-        Tag(li, [id(attr): item.id, key: item.id])
-          {{item.label}}
-          : 
-          {{item.value}}
-      <li>End</li>
+Tag(div, [class(attr): {'a': true}, class(attr): [b]], BindProps)
+  Tag(span, [class(attr): [d], class(attr): {c: true}, a: 1])
+    {{data.msg}}
+  For(item in data.c)
+    <div>
+    <main>
+    <main/>
+    </div>

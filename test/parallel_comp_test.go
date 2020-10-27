@@ -78,7 +78,7 @@ func TestParallel(t *testing.T) {
 
 			props := vpl.NewProps()
 			props.AppendMap(map[string]interface{}{
-				"sleep": func(r *vpl.Vpl, args ...interface{}) interface{} {
+				"sleep": func(r *vpl.RenderCtx, args ...interface{}) interface{} {
 					ti := interfaceToFloat(args[0])
 					time.Sleep(time.Duration(ti) * time.Second)
 					return fmt.Sprintf("sleep %+v", ti)

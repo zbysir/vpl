@@ -9,28 +9,22 @@ import (
 
 func TestSimpleNodeVue(t *testing.T) {
 	const rawPageHtml = `
-<div style="color: red">
-	<div class="c">
-		Text
-	</div>
-	<div :id="id" style="color: red" :style="{'a': 1}">
-		Infos:
-		<ul :class="'c' + ulClass" class="b" style="color: red" >
-			<li v-if="ifStart" about=a>Start <span> span </span></li>
-			<li v-else about=b>Not Start</li>
-			<li v-for="item in infos" :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
-			<li>End</li>
-		</ul>
-	</div>
-</div>
+  <div v-bind:class="{'a': true}" class="b">
+    <span class="d" v-bind:class="{c: true}" :a="1">
+        {{data.msg}}
+    </span>
+    <div v-for="item in data.c">
+      <main :data="item"></main>
+    </div>
+  </div>
 `
 
 	// 将会优化成另一个AST:
-	// Tag(div, [], BindProps)
+	// Tag(div, [style(attr): map[color:red]], BindProps)
 	//  <div class="c">Text</div>
-	//  Tag(div, [id(attr): id])
+	//  Tag(div, [id(attr): id, style(attr): map[color:red], style(attr): {'a': 1}])
 	//    Infos:
-	//    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b]])
+	//    Tag(ul, [class(attr): 'c' + ulClass, class(attr): [b], style(attr): color: red;])
 	//      If(ifStart)
 	//        <li about="a">Start<span>span</span></li>
 	//      Else
