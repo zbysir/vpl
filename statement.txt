@@ -1,6 +1,4 @@
 Tag(body, [], BindProps)
   Tag(div, [])
     {{{html}}}
-  <template>
-    {{html}}
-  <template/>
+  {{html}}

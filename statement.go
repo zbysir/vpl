@@ -137,7 +137,7 @@ func (r propsC) execTo(ctx *RenderCtx, ps *Props) {
 			c = CanBeAttr
 		}
 
-		ps.Append(&PropKeys{
+		ps.append(&PropKeys{
 			AttrWay: c,
 			Key:     p.Key,
 		}, p.exec(ctx).Val)
@@ -232,7 +232,7 @@ func (r *Props) ToMap() map[string]interface{} {
 	return r.data
 }
 
-func (r *Props) Append(k *PropKeys, v interface{}) {
+func (r *Props) append(k *PropKeys, v interface{}) {
 	if r.data == nil {
 		r.data = map[string]interface{}{}
 	}
@@ -258,22 +258,17 @@ func (r *Props) Append(k *PropKeys, v interface{}) {
 
 // AppendAttr 向当前tag添加属性
 func (r *Props) AppendAttr(k, v string) {
-	if r.data == nil {
-		r.data = map[string]interface{}{}
-	}
-	if r.keys == nil {
-		r.keys = &PropKeys{}
-	}
+	r.append(&PropKeys{
+		AttrWay: CanBeAttr,
+		Key:     k,
+	}, v)
+}
 
-	_, exist := r.data[k]
-	if !exist {
-		r.keys.Append(&PropKeys{
-			AttrWay: CanBeAttr,
-			Key:     k,
-		})
-	}
-
-	r.data[k] = v
+func (r *Props) Append(k string, v interface{}) {
+	r.append(&PropKeys{
+		AttrWay: MayBeAttr,
+		Key:     k,
+	}, v)
 }
 
 func (r *Props) AppendClass(c ...string) {
@@ -281,7 +276,7 @@ func (r *Props) AppendClass(c ...string) {
 	for i, v := range c {
 		cla[i] = v
 	}
-	r.Append(&PropKeys{
+	r.append(&PropKeys{
 		AttrWay: CanBeAttr,
 		Key:     "class",
 	}, cla)
@@ -292,7 +287,7 @@ func (r *Props) AppendStyle(st map[string]string) {
 	for k, v := range st {
 		stm[k] = v
 	}
-	r.Append(&PropKeys{
+	r.append(&PropKeys{
 		AttrWay: CanBeAttr,
 		Key:     "style",
 	}, stm)
@@ -326,7 +321,7 @@ func (r *Props) AppendMap(mp map[string]interface{}) {
 
 	for _, k := range keys {
 		v := mp[k]
-		r.Append(&PropKeys{
+		r.append(&PropKeys{
 			AttrWay: MayBeAttr,
 			Key:     k,
 		}, v)
@@ -340,7 +335,7 @@ func (r *Props) appendProps(ps *Props) {
 	}
 
 	ps.ForEach(func(index int, k *PropKeys, v interface{}) {
-		r.Append(k, v)
+		r.append(k, v)
 	})
 }
 
@@ -693,61 +688,59 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 
 	if len(t.tagStruct.Props) != 0 {
 		for _, p := range t.tagStruct.Props {
-			if p.CanBeAttr {
-				if p.Key == "class" {
-					// 如果class是静态的, 则不会发生合并的情况, 直接写入到write.
-					if p.IsStatic {
-						ctx.W.WriteString(` class="`)
-						ctx.W.WriteString(p.ValStatic)
-						ctx.W.WriteString(`"`)
-					} else {
-						writeClass(p.Val.Exec(rCtx), &class)
-						if _, exist := attr["class"]; !exist {
-							attrKeys = append(attrKeys, "class")
-							attr["class"] = ""
-						}
-					}
-				} else if p.Key == "style" {
-					if p.IsStatic {
-						ctx.W.WriteString(` style="`)
-						ctx.W.WriteString(p.ValStatic)
-						ctx.W.WriteString(`"`)
-					} else {
-						switch t := p.Val.Exec(rCtx).(type) {
-						case map[string]interface{}:
-							if style == nil {
-								style = t
-							} else {
-								for k, v := range t {
-									style[k] = v
-								}
-							}
-						}
-						if _, exist := attr["style"]; !exist {
-							attrKeys = append(attrKeys, "style")
-							attr["style"] = ""
-						}
-					}
+			if p.Key == "class" {
+				// 如果class是静态的, 则不会发生合并的情况, 直接写入到write.
+				if p.IsStatic {
+					ctx.W.WriteString(` class="`)
+					ctx.W.WriteString(p.ValStatic)
+					ctx.W.WriteString(`"`)
 				} else {
-					if p.IsStatic {
-						if p.ValStatic != "" {
-							if _, exist := attr[p.Key]; !exist {
-								attrKeys = append(attrKeys, p.Key)
+					writeClass(p.Val.Exec(rCtx), &class)
+					if _, exist := attr["class"]; !exist {
+						attrKeys = append(attrKeys, "class")
+						attr["class"] = ""
+					}
+				}
+			} else if p.Key == "style" {
+				if p.IsStatic {
+					ctx.W.WriteString(` style="`)
+					ctx.W.WriteString(p.ValStatic)
+					ctx.W.WriteString(`"`)
+				} else {
+					switch t := p.Val.Exec(rCtx).(type) {
+					case map[string]interface{}:
+						if style == nil {
+							style = t
+						} else {
+							for k, v := range t {
+								style[k] = v
 							}
-							attr[p.Key] = p.ValStatic
 						}
-					} else {
-						v := p.Val.Exec(rCtx)
+					}
+					if _, exist := attr["style"]; !exist {
+						attrKeys = append(attrKeys, "style")
+						attr["style"] = ""
+					}
+				}
+			} else {
+				if p.IsStatic {
+					if p.ValStatic != "" {
 						if _, exist := attr[p.Key]; !exist {
 							attrKeys = append(attrKeys, p.Key)
 						}
+						attr[p.Key] = p.ValStatic
+					}
+				} else {
+					v := p.Val.Exec(rCtx)
+					if _, exist := attr[p.Key]; !exist {
+						attrKeys = append(attrKeys, p.Key)
+					}
 
-						switch v := v.(type) {
-						case string:
-							attr[p.Key] = v
-						default:
-							attr[p.Key] = util.InterfaceToStr(v, true)
-						}
+					switch v := v.(type) {
+					case string:
+						attr[p.Key] = v
+					default:
+						attr[p.Key] = util.InterfaceToStr(v, true)
 					}
 				}
 			}

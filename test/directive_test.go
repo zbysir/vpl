@@ -112,7 +112,7 @@ func TestDirective(t *testing.T) {
 			})
 
 			v.Directive("show", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
-				nodeData.Props.Append(&vpl.PropKeys{AttrWay: vpl.CanBeAttr, Key: "style"}, map[string]interface{}{
+				nodeData.Props.AppendStyle(map[string]string{
 					"display": "none",
 				})
 			})

@@ -33,7 +33,9 @@ func WithCanBeAttrsKey(canBeAttr func(k string) bool) Options {
 	}
 }
 
-// New 返回Vpl实例, 该实例应该被共用在多次渲染中, 推荐做法是整个程序只有一个Vpl实例.
+// New return a Vpl instance,
+// This instance should be shared in multiple renderings.
+// The recommended practice is to have only one Vpl instance for the whole program.
 func New(options ...Options) *Vpl {
 	vpl := &Vpl{
 		components: map[string]Statement{
@@ -150,6 +152,7 @@ func (v *Vpl) Component(name string, c Statement) (err error) {
 	return nil
 }
 
+// Declare a component by file
 func (v *Vpl) ComponentFile(name string, path string) (err error) {
 	fileBs, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -159,6 +162,7 @@ func (v *Vpl) ComponentFile(name string, path string) (err error) {
 	return v.ComponentTxt(name, string(fileBs))
 }
 
+// Declare a component by txt
 func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
 	s, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
 		CanBeAttr: v.canBeAttrsKey,
