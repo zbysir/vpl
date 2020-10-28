@@ -67,21 +67,25 @@ func New(options ...Options) *Vpl {
 				var slot *Slot
 
 				p := o.Parent
-				if slotName == "" {
-					slot = p.Slots.Default
-				} else {
-					slot = p.Slots.Get(slotName)
+				if p.Slots != nil {
+					if slotName == "" {
+						slot = p.Slots.Default
+					} else {
+						slot = p.Slots.Get(slotName)
+					}
 				}
 
 				if slot == nil {
 					// 备选内容
-					fullback := o.Slots.Default
-					if fullback != nil {
-						err := fullback.ExecSlot(ctx, &ExecSlotOptions{
-							SlotProps: nil,
-						})
-						if err != nil {
-							return err
+					if o.Slots != nil {
+						fullback := o.Slots.Default
+						if fullback != nil {
+							err := fullback.ExecSlot(ctx, &ExecSlotOptions{
+								SlotProps: nil,
+							})
+							if err != nil {
+								return err
+							}
 						}
 					}
 
@@ -120,6 +124,24 @@ func New(options ...Options) *Vpl {
 				ctx.W.WriteSpan(s)
 
 				return nil
+			}),
+			// 动态组件
+			"component": FuncStatement(func(ctx *StatementCtx, o *StatementOptions) error {
+				is := ""
+				attr, exist := o.Props.Get("is")
+				if exist {
+					is, _ = attr.(string)
+				}
+
+				if is == "" {
+					return nil
+				}
+				cp, exist := ctx.Components[is]
+				if !exist {
+					return nil
+				}
+
+				return cp.Exec(ctx, o)
 			}),
 		},
 		prototype:  NewScope(nil),
@@ -250,7 +272,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 	statement := ComponentStatement{
 		ComponentKey: component,
 		ComponentStruct: ComponentStruct{
-			Props:     nil,
+			Props: nil,
 			// 将所有Props传递到组件中
 			VBind:      &vBindC{useProps: true},
 			Directives: nil,
@@ -278,10 +300,10 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 	scope := v.NewScope()
 	scope.Set("$props", p.Props)
 	err = statement.Exec(ctx, &StatementOptions{
-		Slots:     nil,
-		Props:     p.Props,
-		Scope:     scope,
-		Parent:    nil,
+		Slots:  nil,
+		Props:  p.Props,
+		Scope:  scope,
+		Parent: nil,
 	})
 
 	if err != nil {

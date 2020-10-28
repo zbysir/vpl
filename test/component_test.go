@@ -126,6 +126,49 @@ func TestComponent(t *testing.T) {
 				return nil
 			},
 		},
+		{
+			// 测试组件-fragment, 多个root节点
+			Name:           "component_dynamic",
+			IndexComponent: `main`,
+			Tpl: []struct {
+				Name string
+				Txt  string
+			}{
+				{
+					Name: "main",
+					Txt: `
+<div>
+	<component is="Infos" :id=id :class=[cla] :style="{color: 'red'}">
+		some text
+	</component>
+</div>`,
+				},
+				{
+					Name: "Infos",
+					Txt: `
+<div class="a" id="internal" style="top: 2px">
+<slot></slot>
+</div>
+`,
+				},
+			},
+			Output: "output/%s.html",
+			Checker: func(html string) error {
+				if !strings.Contains(html, `class="a propsClass"`) {
+					return errors.New("处理class继承有误")
+				}
+
+				if !strings.Contains(html, `style="color: red; top: 2px;"`) {
+					return errors.New("处理style继承有误")
+				}
+
+				if !strings.Contains(html, `id="id"`) {
+					return errors.New("处理attr继承有误")
+				}
+
+				return nil
+			},
+		},
 	}
 
 	for _, c := range cases {
