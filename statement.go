@@ -206,7 +206,7 @@ type Props struct {
 
 func NewProps() *Props {
 	return &Props{
-		keys: &PropKeys{},
+		keys: nil,
 		data: nil,
 	}
 }
@@ -236,6 +236,9 @@ func (r *Props) Append(k *PropKeys, v interface{}) {
 	if r.data == nil {
 		r.data = map[string]interface{}{}
 	}
+	if r.keys == nil {
+		r.keys = &PropKeys{}
+	}
 
 	// 合并class/style
 	ve, exist := r.data[k.Key]
@@ -257,6 +260,9 @@ func (r *Props) Append(k *PropKeys, v interface{}) {
 func (r *Props) AppendAttr(k, v string) {
 	if r.data == nil {
 		r.data = map[string]interface{}{}
+	}
+	if r.keys == nil {
+		r.keys = &PropKeys{}
 	}
 
 	_, exist := r.data[k]

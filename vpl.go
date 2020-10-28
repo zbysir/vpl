@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/valyala/bytebufferpool"
 	"github.com/zbysir/vpl/internal/parser"
-	"github.com/zbysir/vpl/internal/util"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -313,14 +312,14 @@ func (p *ListWriter) Result() string {
 
 	var s bytebufferpool.ByteBuffer
 	for _, p := range p.spans {
-		s.Write(util.UnsafeStrToBytes(p.Result()))
+		s.WriteString(p.Result())
 	}
 
 	return s.String()
 }
 
 func (p *ListWriter) WriteString(s string) {
-	p.s.Write(util.UnsafeStrToBytes(s))
+	p.s.WriteString(s)
 }
 
 func (p *ListWriter) WriteSpan(span Span) {

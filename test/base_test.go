@@ -8,10 +8,12 @@ import (
 	"github.com/zbysir/vpl"
 	"github.com/zbysir/vpl/internal/lib/log"
 	"io/ioutil"
+	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBase(t *testing.T) {
@@ -231,7 +233,7 @@ func TestRender(t *testing.T) {
 	// 生成10000个数据
 	index := 0
 	var ds []*data
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1000; i++ {
 		ds = append(ds, &data{
 			C:   nil,
 			Msg: fmt.Sprintf("%d", index),
@@ -245,6 +247,8 @@ func TestRender(t *testing.T) {
 	}
 	bs, _ := json.Marshal(d)
 	json.Unmarshal(bs, &ii)
+
+	time.Sleep(1 * time.Second)
 
 	props := vpl.NewProps()
 	props.AppendMap(map[string]interface{}{
@@ -265,6 +269,12 @@ func TestRender(t *testing.T) {
 	}
 
 	t.Logf("%+v", html)
+
+	// 启动一个 http server
+	// http://localhost:6060/debug/pprof/
+	//if err := http.ListenAndServe(":6060", nil); err != nil {
+	//	log.Fatal(err)
+	//}
 }
 
 // 100	539,790 ns/op
@@ -287,7 +297,6 @@ func TestRender(t *testing.T) {
 // -- 2020-10-28 优化在tag上slot执行
 // xx             219053 B/op	    3246 allocs/op
 func BenchmarkRender(b *testing.B) {
-	b.ReportAllocs()
 	vue := vpl.New()
 	b.Logf("compile....")
 	err := vue.ComponentTxt("main", `
@@ -328,6 +337,9 @@ func BenchmarkRender(b *testing.B) {
 	props.AppendMap(map[string]interface{}{
 		"data": ii,
 	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
 		_, err := vue.RenderComponent("main", &vpl.RenderParam{
