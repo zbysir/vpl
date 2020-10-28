@@ -95,7 +95,7 @@ func TestComponent(t *testing.T) {
 				{
 					Name: "Infos",
 					Txt: `
-<div class="a" v-bind="$props" style="top: 2px"></div>
+<div class="a" v-bind="$props" id="internal" style="top: 2px"></div>
 <div class="b" style="top: 1px">
 	<template v-for="item in infos">
 		{{$index}}

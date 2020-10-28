@@ -3,9 +3,11 @@
 	<body>
 		<ul>
 		{{range id, item := .}}
+		    <div>
 		       {{if item.Print}}
 				 <li >ID={{item.ID}}, Message={{item.Message}}</li>
                {{end}}
+            </div>
         {{end}}
 		</ul>
 	</body>

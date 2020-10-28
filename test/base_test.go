@@ -214,9 +214,11 @@ func TestRender(t *testing.T) {
 	t.Logf("compile....")
 	err := vue.ComponentTxt("main", `
   <div v-bind:class="{'a': true}" class="b">
-	<h1 :a='1'></h1>
-    <div v-for="item in data.c" :class='""+$index'>
-      {{item.msg}} {{$props.a}}
+    <span class="d" v-bind:class="{c: true}" :a="1">
+        {{data.msg}}
+    </span>
+    <div v-for="item in data.c">
+      <main :data="item"></main>
     </div>
   </div>
 `)
@@ -229,7 +231,7 @@ func TestRender(t *testing.T) {
 	// 生成10000个数据
 	index := 0
 	var ds []*data
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 10; i++ {
 		ds = append(ds, &data{
 			C:   nil,
 			Msg: fmt.Sprintf("%d", index),
@@ -246,8 +248,9 @@ func TestRender(t *testing.T) {
 
 	props := vpl.NewProps()
 	props.AppendMap(map[string]interface{}{
-		"data": ii,
-		"a":    1,
+		"data":  ii,
+		"a":     1,
+		"class": "ccc",
 	})
 
 	log.Infof("run")
@@ -281,6 +284,8 @@ func TestRender(t *testing.T) {
 // 495476 ns/op	  379483 B/op	    6279 allocs/op(WIN)
 // -- 2020-10-27 优化在tag上的props执行
 // 323031 ns/op	  227109 B/op	    3448 allocs/op
+// -- 2020-10-28 优化在tag上slot执行
+// xx             219053 B/op	    3246 allocs/op
 func BenchmarkRender(b *testing.B) {
 	b.ReportAllocs()
 	vue := vpl.New()

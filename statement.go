@@ -109,7 +109,7 @@ func (r propsC) String() string {
 			val = v.ValStatic
 		}
 
-		str += fmt.Sprintf("%+v%v: %v, ", v.Key, beAttr, val)
+		str += fmt.Sprintf("%+v%v: %+v, ", v.Key, beAttr, val)
 	}
 	str = strings.TrimSuffix(str, ", ")
 	str += "]"
@@ -130,6 +130,7 @@ func (r propsC) execTo(ctx *RenderCtx, ps *Props) {
 	if len(r) == 0 {
 		return
 	}
+
 	for _, p := range r {
 		c := CanNotBeAttr
 		if p.CanBeAttr {
@@ -528,6 +529,18 @@ func (v *vBindC) execTo(ctx *RenderCtx, ps *Props) {
 	}
 }
 
+func (v *vBindC) exec(ctx *RenderCtx) interface{} {
+	if v == nil {
+		return nil
+	}
+	if v.useProps {
+		return ctx.Scope.Get("$props")
+	} else {
+		return v.val.Exec(ctx)
+	}
+
+}
+
 // 表达式, 所有js表达式都会被预编译成为expression
 type expression interface {
 	// 根据scope计算表达式值
@@ -621,21 +634,72 @@ type tagStatement struct {
 	tagStruct tagStruct
 }
 
+// 执行map格式的props(来至v-bind语法)
+func execBindProps(t map[string]interface{}, ctx *StatementCtx, attrKeys *[]string, attr *map[string]string, class *strings.Builder, style *map[string]interface{}) {
+	for k, v := range t {
+		if k == "class" {
+			writeClass(v, class)
+			if _, exist := (*attr)["class"]; !exist {
+				*attrKeys = append(*attrKeys, "class")
+				(*attr)["class"] = ""
+			}
+		} else if k == "style" {
+			switch t := v.(type) {
+			case map[string]interface{}:
+				if *style == nil {
+					*style = t
+				} else {
+					for k, v := range t {
+						(*style)[k] = v
+					}
+				}
+			}
+			if _, exist := (*attr)["style"]; !exist {
+				*attrKeys = append(*attrKeys, "style")
+				(*attr)["style"] = ""
+			}
+		} else {
+			if ctx.CanBeAttrsKey(k) {
+				if _, exist := (*attr)[k]; !exist {
+					*attrKeys = append(*attrKeys, k)
+				}
+
+				switch v := v.(type) {
+				case string:
+					(*attr)[k] = v
+				default:
+					(*attr)[k] = util.InterfaceToStr(v, true)
+				}
+			}
+		}
+	}
+}
+
 // 如果tag没有指令, 则也不需要生成props, 而是将propsC直接运行成为attr.
 func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 	var style map[string]interface{}
 	var class strings.Builder
-	if len(t.tagStruct.Props) != 0 {
 
+	// 使用attr来解决attr会合并的问题.
+	// 如组件外传递的attr会覆盖与根组件相同的attr
+	attrKeys := make([]string, 0, len(t.tagStruct.Props))
+	attr := make(map[string]string, len(t.tagStruct.Props))
+
+	if len(t.tagStruct.Props) != 0 {
 		for _, p := range t.tagStruct.Props {
 			if p.CanBeAttr {
 				if p.Key == "class" {
+					// 如果class是静态的, 则不会发生合并的情况, 直接写入到write.
 					if p.IsStatic {
 						ctx.W.WriteString(` class="`)
 						ctx.W.WriteString(p.ValStatic)
 						ctx.W.WriteString(`"`)
 					} else {
 						writeClass(p.Val.Exec(rCtx), &class)
+						if _, exist := attr["class"]; !exist {
+							attrKeys = append(attrKeys, "class")
+							attr["class"] = ""
+						}
 					}
 				} else if p.Key == "style" {
 					if p.IsStatic {
@@ -653,29 +717,31 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 								}
 							}
 						}
+						if _, exist := attr["style"]; !exist {
+							attrKeys = append(attrKeys, "style")
+							attr["style"] = ""
+						}
 					}
 				} else {
-					ctx.W.WriteString(` `)
-
-					ctx.W.WriteString(p.Key)
-
 					if p.IsStatic {
 						if p.ValStatic != "" {
-							ctx.W.WriteString(`="`)
-							ctx.W.WriteString(p.ValStatic)
-							ctx.W.WriteString(`"`)
+							if _, exist := attr[p.Key]; !exist {
+								attrKeys = append(attrKeys, p.Key)
+							}
+							attr[p.Key] = p.ValStatic
 						}
 					} else {
 						v := p.Val.Exec(rCtx)
-						ctx.W.WriteString(`="`)
+						if _, exist := attr[p.Key]; !exist {
+							attrKeys = append(attrKeys, p.Key)
+						}
 
 						switch v := v.(type) {
 						case string:
-							ctx.W.WriteString(v)
+							attr[p.Key] = v
 						default:
-							ctx.W.WriteString(util.InterfaceToStr(v, true))
+							attr[p.Key] = util.InterfaceToStr(v, true)
 						}
-						ctx.W.WriteString(`"`)
 					}
 				}
 			}
@@ -684,113 +750,60 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 
 	// 可能需要将 props和vBind中重复的attr去重
 	if t.tagStruct.VBind != nil {
-		var b interface{}
-		if t.tagStruct.VBind.useProps {
-			b = rCtx.Scope.Get("$props")
-		} else {
-			b = t.tagStruct.VBind.val.Exec(rCtx)
-		}
-
+		var b = t.tagStruct.VBind.exec(rCtx)
 		switch t := b.(type) {
 		case map[string]interface{}:
-			for k, v := range t {
-				if k == "class" {
-					writeClass(v, &class)
-				} else if k == "style" {
-					switch t := v.(type) {
-					case map[string]interface{}:
-						if style == nil {
-							style = t
-						} else {
-							for k, v := range t {
-								style[k] = v
-							}
-						}
-					}
-				} else {
-					if ctx.CanBeAttrsKey(k) {
-						ctx.W.WriteString(` `)
-						ctx.W.WriteString(k)
-						ctx.W.WriteString(`="`)
-
-						switch v := v.(type) {
-						case string:
-							ctx.W.WriteString(v)
-						default:
-							ctx.W.WriteString(util.InterfaceToStr(v, true))
-						}
-						ctx.W.WriteString(`"`)
-					}
-				}
-			}
+			execBindProps(t, ctx, &attrKeys, &attr, &class, &style)
 		case skipMarshalMap:
-			for k, v := range t {
-				if k == "class" {
-					writeClass(v, &class)
-				} else if k == "style" {
-					switch t := v.(type) {
-					case map[string]interface{}:
-						if style == nil {
-							style = t
-						} else {
-							for k, v := range t {
-								style[k] = v
-							}
-						}
-					}
-				} else {
-					if ctx.CanBeAttrsKey(k) {
-						ctx.W.WriteString(` `)
-						ctx.W.WriteString(k)
-						ctx.W.WriteString(`="`)
-
-						switch v := v.(type) {
-						case string:
-							ctx.W.WriteString(v)
-						default:
-							ctx.W.WriteString(util.InterfaceToStr(v, true))
-						}
-						ctx.W.WriteString(`"`)
-					}
-				}
-			}
+			execBindProps(t, ctx, &attrKeys, &attr, &class, &style)
 		default:
 			panic(fmt.Sprintf("bad Type of Vbind: %T", b))
 		}
-
-		//t.tagStruct.VBind.execTo(rCtx, props)
 	}
 
-	if class.Len() != 0 {
-		ctx.W.WriteString(` class="`)
-		ctx.W.WriteString(class.String())
-		ctx.W.WriteString(`"`)
-	}
+	// 保证attr排序和写的一致
+	// style和class会出现合并的情况, 所以在运行完所有props和vBind之后处理.
+	for i := range attrKeys {
+		switch attrKeys[i] {
+		case "style":
+			ctx.W.WriteString(` style="`)
+			sortedKeys := util.GetSortedKey(style)
+			var st strings.Builder
+			for _, k := range sortedKeys {
+				v := style[k]
+				if st.Len() != 0 {
+					st.WriteByte(' ')
+				}
 
-	if len(style) != 0 {
-		ctx.W.WriteString(` style="`)
-		sortedKeys := util.GetSortedKey(style)
-		var st strings.Builder
-		for _, k := range sortedKeys {
-			v := style[k]
-			if st.Len() != 0 {
-				st.WriteByte(' ')
+				st.WriteString(k)
+				st.WriteString(": ")
+				switch v := v.(type) {
+				case string:
+					st.WriteString(util.Escape(v))
+				default:
+					bs, _ := json.Marshal(v)
+					st.WriteString(util.Escape(string(bs)))
+				}
+				st.WriteByte(';')
 			}
-
-			st.WriteString(k)
-			st.WriteString(": ")
-			switch v := v.(type) {
-			case string:
-				st.WriteString(util.Escape(v))
-			default:
-				bs, _ := json.Marshal(v)
-				st.WriteString(util.Escape(string(bs)))
+			ctx.W.WriteString(st.String())
+			ctx.W.WriteString(`"`)
+		case "class":
+			ctx.W.WriteString(` class="`)
+			ctx.W.WriteString(class.String())
+			ctx.W.WriteString(`"`)
+		default:
+			ctx.W.WriteString(` `)
+			ctx.W.WriteString(attrKeys[i])
+			v := attr[attrKeys[i]]
+			if v != "" {
+				ctx.W.WriteString(`="`)
+				ctx.W.WriteString(v)
+				ctx.W.WriteString(`"`)
 			}
-			st.WriteByte(';')
 		}
-		ctx.W.WriteString(st.String())
-		ctx.W.WriteString(`"`)
 	}
+
 	return nil
 }
 
@@ -800,14 +813,15 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	rCtx.Scope = o.Scope
 	defer ctxPool.Put(rCtx)
 
-	slots := t.tagStruct.Slots.WrapScope(o.Scope)
-
 	ctx.W.WriteString("<" + t.tag)
 
 	// 如果没有指令, 则优化props执行流程
 	// - 只执行CanBeAttr的props
 	// - 优化class与style
 	// - 直接写入Writer, 减少props声明
+
+	// 如果没有指令, 则不需要闭包slot作用域
+	var slots *Slots
 
 	if len(t.tagStruct.Directives) != 0 {
 		// 处理attr
@@ -825,6 +839,9 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 				t.tagStruct.VBind.execTo(rCtx, props)
 			}
 		}
+
+		// 只有指令有修改slots的需求, 如果没有指令, 则不需要闭包slot作用域
+		slots = t.tagStruct.Slots.WrapScope(o.Scope)
 
 		// 执行指令
 		// 指令可以修改scope/props/style/class/children
@@ -917,6 +934,13 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			if err != nil {
 				return err
 			}
+		}
+	} else if t.tagStruct.Slots != nil {
+		children := t.tagStruct.Slots.Default
+		if children != nil && children.Children != nil {
+			children.Children.Exec(ctx, &StatementOptions{
+				Scope: o.Scope,
+			})
 		}
 	}
 
@@ -1238,7 +1262,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 
 // 声明Slot的语句(编译时)
 // <h1 v-slot:default="SlotProps"> </h1>
-type vSlotC struct {
+type SlotC struct {
 	Name     string
 	propsKey string
 	Children Statement
@@ -1246,9 +1270,7 @@ type vSlotC struct {
 
 // Slot的运行时
 type Slot struct {
-	Name     string
-	propsKey string
-	Children Statement
+	*SlotC
 
 	// 在运行时被赋值
 	ScopeWhenDeclaration *Scope
@@ -1328,8 +1350,8 @@ func (i *rawHtmlStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 // https://cn.vuejs.org/v2/guide/components-slots.html
 // SlotsC 存放传递给组件的所有Slot（默认与具名）(编译时), vue语法: <h1 v-slot:default="xxx"></h1>
 type SlotsC struct {
-	Default   *vSlotC
-	NamedSlot map[string]*vSlotC
+	Default   *SlotC
+	NamedSlot map[string]*SlotC
 }
 
 func (s *SlotsC) marge(x *SlotsC) {
@@ -1343,7 +1365,7 @@ func (s *SlotsC) marge(x *SlotsC) {
 
 	if x.NamedSlot != nil {
 		if s.NamedSlot == nil {
-			s.NamedSlot = make(map[string]*vSlotC, len(x.NamedSlot))
+			s.NamedSlot = make(map[string]*SlotC, len(x.NamedSlot))
 		}
 		for k, xs := range x.NamedSlot {
 			s.NamedSlot[k] = xs
@@ -1357,11 +1379,12 @@ func (s *SlotsC) WrapScope(o *Scope) (sr *Slots) {
 		return nil
 	}
 	if s.Default != nil {
+		log.Infof("slots %+v", NicePrintStatement(s.Default.Children, 0))
+	}
+	if s.Default != nil {
 		sr = &Slots{
 			Default: &Slot{
-				Name:                 "default",
-				propsKey:             s.Default.propsKey,
-				Children:             s.Default.Children,
+				SlotC:                s.Default,
 				ScopeWhenDeclaration: o,
 			},
 		}
@@ -1374,9 +1397,7 @@ func (s *SlotsC) WrapScope(o *Scope) (sr *Slots) {
 		sr.NamedSlot = make(map[string]*Slot, len(s.NamedSlot))
 		for k, v := range s.NamedSlot {
 			sr.NamedSlot[k] = &Slot{
-				Name:                 v.Name,
-				propsKey:             v.propsKey,
-				Children:             v.Children,
+				SlotC:                v,
 				ScopeWhenDeclaration: o,
 			}
 		}
@@ -1663,7 +1684,7 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 				var slots *SlotsC
 				if childStatement != nil {
 					slots = &SlotsC{
-						Default: &vSlotC{
+						Default: &SlotC{
 							Name:     "default",
 							propsKey: "",
 							Children: childStatement,
@@ -1690,20 +1711,6 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 			st = sg.Finish()
 		} else {
 			// 自定义组件
-			//pc, err := compileProp(v.PropClass)
-			//if err != nil {
-			//	return nil, nil, err
-			//}
-			//ps, err := compileProp(v.PropStyle)
-			//if err != nil {
-			//	return nil, nil, err
-			//}
-
-			p, err := compileProps(v.Props, !v.DistributionAttr && v.VBind == nil)
-			if err != nil {
-				return nil, nil, err
-			}
-
 			var childStatement Statement
 
 			if v.VHtml != "" {
@@ -1737,37 +1744,41 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 				childStatement = childStatementG.Finish()
 			}
 
-			if childStatement != nil {
-				slots.Default = &vSlotC{
-					Name:     "default",
-					propsKey: "",
-					Children: childStatement,
+			if v.Tag == "template" && len(v.Directives) == 0 {
+				// 如果是template 并且没有自定义指令, 则可以简化语句
+				st = childStatement
+			} else {
+				if childStatement != nil {
+					slots.Default = &SlotC{
+						Name:     "default",
+						propsKey: "",
+						Children: childStatement,
+					}
 				}
-			}
 
-			vbind, err := compileVBind(v.VBind)
-			if err != nil {
-				return nil, nil, err
-			}
+				vbind, err := compileVBind(v.VBind)
+				if err != nil {
+					return nil, nil, err
+				}
 
-			dir, err := compileDirective(v.Directives)
-			if err != nil {
-				return nil, nil, err
+				dir, err := compileDirective(v.Directives)
+				if err != nil {
+					return nil, nil, err
+				}
+				p, err := compileProps(v.Props, !v.DistributionAttr && v.VBind == nil)
+				if err != nil {
+					return nil, nil, err
+				}
 
-			}
-
-			st = &ComponentStatement{
-				ComponentKey: v.Tag,
-				ComponentStruct: ComponentStruct{
-					Props: p,
-					//PropClass:   pc,
-					//PropStyle:   ps,
-					VBind: vbind,
-					//StaticClass: v.Class,
-					//StaticStyle: v.Style,
-					Directives: dir,
-					Slots:      slots,
-				},
+				st = &ComponentStatement{
+					ComponentKey: v.Tag,
+					ComponentStruct: ComponentStruct{
+						Props:      p,
+						VBind:      vbind,
+						Directives: dir,
+						Slots:      slots,
+					},
+				}
 			}
 
 			// 如果调用了自定义组件, 则slots就算这个自定义组件当中, 而不算在父级当中.
@@ -1831,9 +1842,9 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 
 		if v.VSlot != nil {
 			if slots.NamedSlot == nil {
-				slots.NamedSlot = map[string]*vSlotC{}
+				slots.NamedSlot = map[string]*SlotC{}
 			}
-			slots.NamedSlot[v.VSlot.SlotName] = &vSlotC{
+			slots.NamedSlot[v.VSlot.SlotName] = &SlotC{
 				Name:     v.VSlot.SlotName,
 				propsKey: v.VSlot.PropsKey,
 				Children: st,

@@ -124,8 +124,10 @@ func TestDirective(t *testing.T) {
 				bs, _ := json.Marshal(binding.Value)
 
 				nodeData.Slots.Default = &vpl.Slot{
-					Name:                 "",
-					Children:             &vpl.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
+					SlotC: &vpl.SlotC{
+						Name:     "",
+						Children: &vpl.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
+					},
 					ScopeWhenDeclaration: nil,
 				}
 			})
