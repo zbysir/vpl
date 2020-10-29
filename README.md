@@ -1,4 +1,5 @@
 # Introduction
+[![Go Report Card](https://goreportcard.com/badge/github.com/zbysir/vpl)](https://goreportcard.com/report/github.com/zbysir/vpl)
 
 Vpl is a template engine for golang, template syntax like [vuejs](https://vuejs.org).
 
