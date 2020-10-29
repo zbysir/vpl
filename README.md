@@ -35,7 +35,7 @@ func main() {
 </head>
 <body>
 
-<div style="font-size: 20px" :style="{color: color}">
+<div :id="id" style="font-size: 20px" :style="{color: color}">
 	hello vpl
 </div>
 
@@ -51,6 +51,7 @@ func main() {
 	props.AppendMap(map[string]interface{}{
 		"title": "hello vpl",
 		"color": "red",
+		"id": "content",
 	})
 
 	html, err := v.RenderComponent("app", &vpl.RenderParam{
