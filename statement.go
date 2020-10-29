@@ -921,7 +921,10 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		// 直接执行children, 而不当做slots
 		children := t.tagStruct.Slots.Default
 		if children != nil && children.Children != nil {
-			children.Children.Exec(ctx, o)
+			err := children.Children.Exec(ctx, o)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1239,8 +1242,6 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 		// 父级作用域
 		// 只有组件有父级作用域, 用来执行slot
 		Parent: o,
-
-		debug: "ComponentStatement",
 	})
 }
 
@@ -1442,8 +1443,6 @@ type StatementOptions struct {
 	// - 渲染slot时获取声明slot时的scope.
 	// - 渲染slot时获取上一层的slots, 从中取出slot渲染. (slot组件自己的slot是备选内容)
 	Parent *StatementOptions
-
-	debug string
 }
 
 // 整个渲染期间的上下文.

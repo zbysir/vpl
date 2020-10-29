@@ -295,7 +295,7 @@ func TestRender(t *testing.T) {
 // -- 2020-10-27 优化在tag上的props执行
 // 323031 ns/op	  227109 B/op	    3448 allocs/op
 // -- 2020-10-28 优化在tag上slot执行
-// xx             219053 B/op	    3246 allocs/op
+// 378267 ns/op	  227844 B/op	    3247 allocs/op
 func BenchmarkRender(b *testing.B) {
 	vue := vpl.New()
 	b.Logf("compile....")
