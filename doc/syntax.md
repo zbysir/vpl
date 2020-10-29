@@ -1,4 +1,4 @@
-> Almost all template syntax comes from [vuejs](https://vuejs.org/), please refer to it. Here is just a preview.
+Almost all template syntax comes from [vuejs](https://vuejs.org/), please refer to it. Here is just a preview.
 
 ## Control Structures
 
@@ -70,6 +70,6 @@ Component B:
 </div>
 ```
 
-When the componentB renders, <slot></slot> will be replaced by "Tom".
+When the componentB renders, `<slot></slot>` will be replaced by "Tom".
 
 For more usage, please see the document of Vuejs: https://vuejs.org/v2/guide/components-slots.html
