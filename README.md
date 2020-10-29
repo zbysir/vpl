@@ -102,6 +102,7 @@ vpl.RenderParam{
 ## Docs
 - [Syntax Reference](./doc/syntax.md)
 - [Golang API](./doc/api.md)
+- [Vpl Internals](./doc/internal.md)
 
 ## IntelliJ Plugin
 Just use the Vuejs plugin.
