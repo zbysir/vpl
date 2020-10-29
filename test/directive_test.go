@@ -128,7 +128,7 @@ func TestDirective(t *testing.T) {
 						Name:     "",
 						Children: &vpl.StrStatement{Str: fmt.Sprintf("var %s=%s;", binding.Arg, bs)},
 					},
-					ScopeWhenDeclaration: nil,
+					Declarer: nil,
 				}
 			})
 

@@ -592,7 +592,7 @@ func (r *nullExpression) Exec(*RenderCtx) interface{} {
 }
 
 // vue语法会被编译成一组Statement
-// 为了避免多次运行造成副作用, 所有的Statement在运行时都不应该被修改任何值
+// 为了避免多次运行造成副作用, 所有的 运行时代码 都不应该修改 编译时
 type Statement interface {
 	Exec(ctx *StatementCtx, o *StatementOptions) error
 }
@@ -637,7 +637,10 @@ type tagStatement struct {
 
 // 执行map格式的props(来至v-bind语法)
 func execBindProps(t map[string]interface{}, ctx *StatementCtx, attrKeys *[]string, attr *map[string]string, class *strings.Builder, style *map[string]interface{}) {
-	for k, v := range t {
+	keys := util.GetSortedKey(t)
+
+	for _, k := range keys {
+		v := t[k]
 		if k == "class" {
 			writeClass(v, class)
 			if _, exist := (*attr)["class"]; !exist {
@@ -751,6 +754,7 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 	if t.tagStruct.VBind != nil {
 		var b = t.tagStruct.VBind.exec(rCtx)
 		switch t := b.(type) {
+		case nil:
 		case map[string]interface{}:
 			execBindProps(t, ctx, &attrKeys, &attr, &class, &style)
 		case skipMarshalMap:
@@ -840,7 +844,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		}
 
 		// 只有指令有修改slots的需求, 如果没有指令, 则不需要闭包slot作用域
-		slots = t.tagStruct.Slots.WrapScope(o.Scope)
+		slots = t.tagStruct.Slots.WrapScope(o)
 
 		// 执行指令
 		// 指令可以修改scope/props/style/class/children
@@ -925,6 +929,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 	ctx.W.WriteString(">")
 
+	// 如果没有指令, 则不需要闭包slot作用域
 	if slots != nil {
 		// 子节点
 		children := slots.Default
@@ -935,11 +940,10 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 			}
 		}
 	} else if t.tagStruct.Slots != nil {
+		// 直接执行children, 而不当做slots
 		children := t.tagStruct.Slots.Default
 		if children != nil && children.Children != nil {
-			children.Children.Exec(ctx, &StatementOptions{
-				Scope: o.Scope,
-			})
+			children.Children.Exec(ctx, o)
 		}
 	}
 
@@ -1199,7 +1203,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	}
 
 	// 处理slot作用域
-	slots := c.ComponentStruct.Slots.WrapScope(o.Scope)
+	slots := c.ComponentStruct.Slots.WrapScope(o)
 
 	cp, exist := ctx.Components[c.ComponentKey]
 	// 没有找到组件时直接渲染自身的子组件
@@ -1208,9 +1212,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 
 		child := slots.Default
 		if child != nil {
-			err := child.ExecSlot(ctx, &ExecSlotOptions{
-				SlotProps: nil,
-			})
+			err := child.ExecSlot(ctx, nil)
 			if err != nil {
 				return nil
 			}
@@ -1256,6 +1258,8 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 		// 父级作用域
 		// 只有组件有父级作用域, 用来执行slot
 		Parent: o,
+
+		debug: "ComponentStatement",
 	})
 }
 
@@ -1272,7 +1276,8 @@ type Slot struct {
 	*SlotC
 
 	// 在运行时被赋值
-	ScopeWhenDeclaration *Scope
+	// Declarer 存储在当slot声明时的组件数据
+	Declarer *StatementOptions
 }
 
 type ExecSlotOptions struct {
@@ -1280,22 +1285,27 @@ type ExecSlotOptions struct {
 	SlotProps *Props
 }
 
-func (s *Slot) ExecSlot(ctx *StatementCtx, o *ExecSlotOptions) error {
+func (s *Slot) ExecSlot(ctx *StatementCtx, o *StatementOptions) error {
 	if s.Children == nil {
 		return nil
 	}
 
 	// 将申明时的scope和传递的slot-props合并
-	scope := s.ScopeWhenDeclaration
-	if scope != nil && o != nil && o.SlotProps != nil {
+	scope := s.Declarer.Scope
+	if scope != nil && o != nil && o.Props != nil && s.propsKey != "" {
 		scope = scope.Extend(map[string]interface{}{
-			s.propsKey: o.SlotProps.ToMap(),
+			s.propsKey: o.Props.ToMap(),
 		})
 	}
 
-	return s.Children.Exec(ctx, &StatementOptions{
+	no := &StatementOptions{
 		Scope: scope,
-	})
+	}
+	if o != nil {
+		no.Slots = s.Declarer.Slots
+		//no.Slots = s.Declarer.Slots
+	}
+	return s.Children.Exec(ctx, no)
 }
 
 // 胡子语法: {{a}}
@@ -1373,18 +1383,15 @@ func (s *SlotsC) marge(x *SlotsC) {
 }
 
 // WrapScope 设置在slot声明时的scope, 用于在运行slot时使用声明slot时的scope
-func (s *SlotsC) WrapScope(o *Scope) (sr *Slots) {
+func (s *SlotsC) WrapScope(o *StatementOptions) (sr *Slots) {
 	if s == nil {
 		return nil
 	}
 	if s.Default != nil {
-		log.Infof("slots %+v", NicePrintStatement(s.Default.Children, 0))
-	}
-	if s.Default != nil {
 		sr = &Slots{
 			Default: &Slot{
-				SlotC:                s.Default,
-				ScopeWhenDeclaration: o,
+				SlotC:    s.Default,
+				Declarer: o,
 			},
 		}
 	}
@@ -1396,8 +1403,8 @@ func (s *SlotsC) WrapScope(o *Scope) (sr *Slots) {
 		sr.NamedSlot = make(map[string]*Slot, len(s.NamedSlot))
 		for k, v := range s.NamedSlot {
 			sr.NamedSlot[k] = &Slot{
-				SlotC:                v,
-				ScopeWhenDeclaration: o,
+				SlotC:    v,
+				Declarer: o,
 			}
 		}
 	}
@@ -1454,6 +1461,8 @@ type StatementOptions struct {
 	// - 渲染slot时获取声明slot时的scope.
 	// - 渲染slot时获取上一层的slots, 从中取出slot渲染. (slot组件自己的slot是备选内容)
 	Parent *StatementOptions
+
+	debug string
 }
 
 // 整个渲染期间的上下文.
@@ -1533,6 +1542,11 @@ var htmlTag = map[string]struct{}{
 	"input":  {},
 	"p":      {},
 	"h1":     {},
+	"h2":     {},
+	"h3":     {},
+	"h4":     {},
+	"h5":     {},
+	"h6":     {},
 	"ul":     {},
 	"li":     {},
 	"span":   {},
@@ -1840,13 +1854,21 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 		}
 
 		if v.VSlot != nil {
-			if slots.NamedSlot == nil {
-				slots.NamedSlot = map[string]*SlotC{}
-			}
-			slots.NamedSlot[v.VSlot.SlotName] = &SlotC{
-				Name:     v.VSlot.SlotName,
-				propsKey: v.VSlot.PropsKey,
-				Children: st,
+			if v.VSlot.SlotName == "default" {
+				slots.Default = &SlotC{
+					Name:     v.VSlot.SlotName,
+					propsKey: v.VSlot.PropsKey,
+					Children: st,
+				}
+			} else {
+				if slots.NamedSlot == nil {
+					slots.NamedSlot = map[string]*SlotC{}
+				}
+				slots.NamedSlot[v.VSlot.SlotName] = &SlotC{
+					Name:     v.VSlot.SlotName,
+					propsKey: v.VSlot.PropsKey,
+					Children: st,
+				}
 			}
 
 			// 自己不是语句, 而是slot

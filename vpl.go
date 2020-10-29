@@ -47,9 +47,7 @@ func New(options ...Options) *Vpl {
 				if slot == nil {
 					return nil
 				}
-				err := slot.ExecSlot(ctx, &ExecSlotOptions{
-					SlotProps: nil,
-				})
+				err := slot.ExecSlot(ctx, nil)
 				if err != nil {
 					return nil
 				}
@@ -80,9 +78,7 @@ func New(options ...Options) *Vpl {
 					if o.Slots != nil {
 						fullback := o.Slots.Default
 						if fullback != nil {
-							err := fullback.ExecSlot(ctx, &ExecSlotOptions{
-								SlotProps: nil,
-							})
+							err := fullback.ExecSlot(ctx, nil)
 							if err != nil {
 								return err
 							}
@@ -92,9 +88,7 @@ func New(options ...Options) *Vpl {
 					return nil
 				}
 
-				err := slot.ExecSlot(ctx, &ExecSlotOptions{
-					SlotProps: o.Props,
-				})
+				err := slot.ExecSlot(ctx, o)
 				if err != nil {
 					return nil
 				}
@@ -113,7 +107,7 @@ func New(options ...Options) *Vpl {
 						s.Done("")
 						return
 					}
-					err := child.ExecSlot(ctx, &ExecSlotOptions{})
+					err := child.ExecSlot(ctx, nil)
 					if err != nil {
 						s.Done(fmt.Sprintf("err: %+v", err))
 					} else {

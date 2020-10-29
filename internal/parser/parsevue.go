@@ -332,9 +332,6 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 					slotName := key
 					propsKey := attr.Value
 					// 不应该为空, 否则可能会导致生成的go代码有误
-					if propsKey == "" {
-						propsKey = "slotProps"
-					}
 					vSlot = &VSlot{
 						SlotName: slotName,
 						PropsKey: propsKey,
@@ -368,6 +365,14 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 						Value: strings.Trim(attr.Value, " "),
 						Arg:   arg,
 					})
+				}
+			} else if strings.HasPrefix(key, "#") {
+				// v-slot:缩小
+				slotName := key[1:]
+				propsKey := attr.Value
+				vSlot = &VSlot{
+					SlotName: slotName,
+					PropsKey: propsKey,
 				}
 			} else if key == "class" {
 				ss := strings.Split(attr.Value, " ")
