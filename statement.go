@@ -116,16 +116,6 @@ func (r propsC) String() string {
 	return str
 }
 
-// 执行编译之后的PropsC, 返回数值PropsR.
-func (r propsC) exec(ctx *RenderCtx) *Props {
-	if len(r) == 0 {
-		return nil
-	}
-	pr := NewProps()
-	r.execTo(ctx, pr)
-	return pr
-}
-
 func (r propsC) execTo(ctx *RenderCtx, ps *Props) {
 	if len(r) == 0 {
 		return
@@ -344,7 +334,7 @@ func (r *Props) Get(key string) (interface{}, bool) {
 	return v, exist
 }
 
-// 如果 style和class动态与静态不冲突, 则可以将静态style/class优化为 string
+// 如果 style和class动态与静态不冲突 ,并且沒有指令, 则可以将静态style/class优化为 string
 func compileProps(p parser.Props, staticProp bool) (propsC, error) {
 	pc := make(propsC, len(p))
 	hasBindStyle := false
@@ -830,7 +820,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		// 处理attr
 		// 计算Props
 		var props *Props
-		if len(t.tagStruct.Props) != 0 && t.tagStruct.VBind != nil {
+		if len(t.tagStruct.Props) != 0 || t.tagStruct.VBind != nil {
 			props = NewProps()
 
 			if len(t.tagStruct.Props) != 0 {
@@ -848,13 +838,15 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 		// 执行指令
 		// 指令可以修改scope/props/style/class/children
-		execDirectives(t.tagStruct.Directives, ctx, o.Scope, &NodeData{
+		data := &NodeData{
 			Props: props,
 			Slots: slots,
-		})
+		}
+		execDirectives(t.tagStruct.Directives, ctx, o.Scope, data)
+		props = data.Props
+		slots = data.Slots
 
 		if props != nil {
-			firstAttr := true
 			props.ForEach(func(index int, k *PropKeys, v interface{}) {
 				// 如果在编译期就确定了不能被转为attr, 则始终不能
 				// 如果无法在编译期间确定(如 通过props.AppendMap()的方式添加的props/通过v-bind="$props"方式而来的props), 则还需要再次调用函数判断
@@ -872,12 +864,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 
 				if k.Key == "style" {
 					if v != nil {
-						if firstAttr {
-							ctx.W.WriteString(" ")
-							firstAttr = false
-						}
-
-						ctx.W.WriteString(`style="`)
+						ctx.W.WriteString(` style="`)
 						var s strings.Builder
 						writeStyle(v, &s)
 						ctx.W.WriteString(s.String())
@@ -885,23 +872,14 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 					}
 				} else if k.Key == "class" {
 					if v != nil {
-						if firstAttr {
-							ctx.W.WriteString(" ")
-							firstAttr = false
-						}
-
-						ctx.W.WriteString(`class="`)
+						ctx.W.WriteString(` class="`)
 						var s strings.Builder
 						writeClass(v, &s)
 						ctx.W.WriteString(s.String())
 						ctx.W.WriteString(`"`)
 					}
 				} else {
-					if firstAttr {
-						ctx.W.WriteString(" ")
-						firstAttr = false
-					}
-
+					ctx.W.WriteString(" ")
 					ctx.W.WriteString(k.Key)
 
 					if v != nil {
@@ -1225,10 +1203,13 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	// 执行指令
 	// 指令可以修改scope/props/style/class/children
 	if len(c.ComponentStruct.Directives) != 0 {
-		execDirectives(c.ComponentStruct.Directives, ctx, o.Scope, &NodeData{
+		data := &NodeData{
 			Props: props,
 			Slots: slots,
-		})
+		}
+		execDirectives(c.ComponentStruct.Directives, ctx, o.Scope, data)
+		props = data.Props
+		slots = data.Slots
 	}
 
 	//json.Marshal()
@@ -1290,20 +1271,20 @@ func (s *Slot) ExecSlot(ctx *StatementCtx, o *StatementOptions) error {
 		return nil
 	}
 
+	var no *StatementOptions
 	// 将申明时的scope和传递的slot-props合并
-	scope := s.Declarer.Scope
-	if scope != nil && o != nil && o.Props != nil && s.propsKey != "" {
-		scope = scope.Extend(map[string]interface{}{
-			s.propsKey: o.Props.ToMap(),
-		})
-	}
-
-	no := &StatementOptions{
-		Scope: scope,
-	}
-	if o != nil {
+	if s.Declarer != nil {
+		no = &StatementOptions{}
 		no.Slots = s.Declarer.Slots
-		//no.Slots = s.Declarer.Slots
+
+		scope := s.Declarer.Scope
+		if o != nil && o.Props != nil && s.propsKey != "" {
+			scope = scope.Extend(map[string]interface{}{
+				s.propsKey: o.Props.ToMap(),
+			})
+		}
+
+		no.Scope = scope
 	}
 	return s.Children.Exec(ctx, no)
 }
@@ -1638,7 +1619,9 @@ func toStatement(v *parser.VueElement) (Statement, *SlotsC, error) {
 				//	return nil, nil, err
 				//}
 
-				p, err := compileProps(v.Props, !v.DistributionAttr && v.VBind == nil)
+				// 如果 style和class动态与静态不冲突 ,并且沒有指令, 则可以将静态style/class优化为 string
+				staticProp := !v.DistributionAttr && v.VBind == nil && len(v.Directives) == 0
+				p, err := compileProps(v.Props, staticProp)
 				if err != nil {
 					return nil, nil, err
 				}

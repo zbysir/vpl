@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zbysir/vpl"
+	"github.com/zbysir/vpl/internal/lib/log"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -94,6 +95,9 @@ func TestDirective(t *testing.T) {
 				var a Animate
 				Copy(binding.Value, &a)
 
+				if nodeData.Props==nil{
+					nodeData.Props = vpl.NewProps()
+				}
 				nodeData.Props.AppendAttr("data-wow-iteration", fmt.Sprintf("%v", a.Iteration))
 				nodeData.Props.AppendAttr("data-wow-delay", fmt.Sprintf("%0.2fs", a.Delay))
 				nodeData.Props.AppendAttr("data-wow-duration", fmt.Sprintf("%0.2fs", a.Duration))
@@ -103,7 +107,9 @@ func TestDirective(t *testing.T) {
 
 			v.Directive("style-important", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
 				m := binding.Value.(map[string]interface{})
-
+				if nodeData.Props==nil{
+					nodeData.Props = vpl.NewProps()
+				}
 				for k, v := range m {
 					nodeData.Props.AppendStyle(map[string]string{
 						k: v.(string) + " !important",
@@ -112,6 +118,10 @@ func TestDirective(t *testing.T) {
 			})
 
 			v.Directive("show", func(ctx *vpl.RenderCtx, nodeData *vpl.NodeData, binding *vpl.DirectivesBinding) {
+				if nodeData.Props==nil{
+					log.Infof("nodeData.Props==nil")
+					nodeData.Props = vpl.NewProps()
+				}
 				nodeData.Props.AppendStyle(map[string]string{
 					"display": "none",
 				})

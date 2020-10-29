@@ -9,10 +9,21 @@ import (
 
 func TestSimpleNodeVue(t *testing.T) {
 	const rawPageHtml = `
-<body>
-<div v-html="html"></div>
-<template v-text="html"></template>
-</body>
+<div style="color: red">
+	<div class="c">
+		Text
+	</div>
+	<div :id="id" style="color: red" :style="{'a': 1}">
+		Infos:
+		<ul :class="'c' + ulClass" class="b" style="color: red" >
+			<li v-if="ifStart" about=a>Start <span> span </span></li>
+			<li v-else about=b>Not Start</li>
+			<li v-for="item in infos" :id="item.id" :key="item.id">{{item.label}}: {{item.value}}</li>
+			<li v-show="a" style="top: 1px">VShow</li>
+			<li>End</li>
+		</ul>
+	</div>
+</div>
 `
 
 	// 将会优化成另一个AST:
@@ -30,6 +41,8 @@ func TestSimpleNodeVue(t *testing.T) {
 	//          {{item.label}}
 	//          :
 	//          {{item.value}}
+	//      Tag(li, [style(attr): map[top:1px]], v-show)
+	//        VShow
 	//      <li>End</li>
 
 	nt, err := parser.ParseHtml(rawPageHtml)

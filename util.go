@@ -155,6 +155,13 @@ func NicePrintStatement(st Statement, lev int) string {
 			}
 		}
 
+		if len(t.tagStruct.Directives) != 0 {
+			s += fmt.Sprintf(",")
+			for _, v := range t.tagStruct.Directives {
+				s += fmt.Sprintf(" v-%s", v.Name)
+			}
+		}
+
 		s += fmt.Sprintf(")\n")
 
 		s += fmt.Sprintf("%s", NicePrintStatement(t.tagStruct.Slots.Default.Children, lev+1))
