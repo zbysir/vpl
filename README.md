@@ -37,7 +37,12 @@ func main() {
 <body>
 
 <div :id="id" style="font-size: 20px" :style="{color: color}">
-	hello vpl
+	<span v-if="color=='red'">
+        color is red
+    </span>
+	<span v-else>
+        color is {{color}}
+    </span>
 </div>
 
 </body>
@@ -98,6 +103,47 @@ vpl.RenderParam{
     Props:  props, // Props to Render Component.
 }
 ```
+
+## With Go features
+Let's add some go features to vpl.
+
+### Parallel
+The advantage of go is concurrency, can vpl use it?
+
+YES! Use the `<parallel>` component.
+
+Let's see this example:
+```vue
+<div>
+    <div>
+        <!-- Some things took 1s -->
+        {{ sleep(1) }} 
+    </div>
+    <div>
+        <!-- Some things took 2s -->
+        {{ sleep(2) }} 
+    </div>
+</div>
+```
+If the template is executed in order, it will take 3s. To parallel them, you can wrap them with `parallel` component.
+
+```vue
+<div>
+    <parallel>
+        <div>
+            <!-- Some things took 1s -->
+            {{ sleep(1) }} 
+        </div>
+    </parallel>
+    <parallel>
+        <div>
+            <!-- Some things took 2s -->
+            {{ sleep(2) }} 
+        </div>
+    </parallel>
+</div>
+```
+Now it only takes 2s.
 
 ## Docs
 - [Syntax Reference](./doc/syntax.md)

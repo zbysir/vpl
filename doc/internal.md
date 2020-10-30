@@ -32,35 +32,4 @@ The advantage of go is concurrency, can vpl use it?
 
 YES! Use the `<parallel>` component.
 
-Let's see this example:
-```vue
-<div>
-    <div>
-        <!-- Some things took 1s -->
-        {{ sleep(1) }} 
-    </div>
-    <div>
-        <!-- Some things took 2s -->
-        {{ sleep(2) }} 
-    </div>
-</div>
-```
-If the template is executed in order, it will take 3s. To parallel them, you can wrap them with `parallel` component.
-
-```vue
-<div>
-    <parallel>
-        <div>
-            <!-- Some things took 1s -->
-            {{ sleep(1) }} 
-        </div>
-    </parallel>
-    <parallel>
-        <div>
-            <!-- Some things took 2s -->
-            {{ sleep(2) }} 
-        </div>
-    </parallel>
-</div>
-```
-Now it only takes 2s.
+Please refer to [syntax-parallel](./syntax.md#parallel)
