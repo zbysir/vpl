@@ -1,4 +1,4 @@
-# Introduction
+# Vpl
 [![Go Report Card](https://goreportcard.com/badge/github.com/zbysir/vpl)](https://goreportcard.com/report/github.com/zbysir/vpl)
 
 Vpl is a [Vuejs](https://vuejs.org)-syntax like template-engine for Golang.
@@ -48,11 +48,11 @@ func main() {
 	}
 
 	props := vpl.NewProps()
-	props.Append("lang", "en")
 	props.AppendMap(map[string]interface{}{
 		"title": "hello vpl",
 		"color": "red",
 		"id": "content",
+		"lang": "en",
 	})
 
 	html, err := v.RenderComponent("app", &vpl.RenderParam{
