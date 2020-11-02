@@ -74,6 +74,19 @@ When the componentB renders, `<slot></slot>` will be replaced by "Tom".
 
 For more usage, please see the document of Vuejs: https://vuejs.org/v2/guide/components-slots.html
 
+## Fragments
+In Vue 3, components now have official support for multi-root node components, i.e., [fragments!](https://v3.vuejs.org/guide/migration/fragments)
+
+> Components now can have multiple root nodes! However, this does require developers to explicitly define where attributes should be distributed.
+
+The difference with vue is: vpl uses the `$props` attribute instead of `$attrs`
+```vue
+<!-- Layout.vue -->
+<header>...</header>
+<main v-bind="$props">...</main>
+<footer>...</footer>
+```
+
 ## Parallel
 The advantage of go is concurrency, can vpl use it?
 
