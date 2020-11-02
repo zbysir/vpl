@@ -209,6 +209,11 @@ func (p VueElementParser) Parse(e *Node) (*VueElement, error) {
 
 	ve := vs[0]
 
+	// 如果根节点只有要给并且是template，则是vue写法, 需要删除掉template来兼容此语法
+	if len(ve.Children) == 1 && ve.Children[0].Tag == "template" {
+		ve.Children = ve.Children[0].Children
+	}
+
 	// 如果只有一个root节点, 则将自动分配attr
 	if len(ve.Children) == 1 {
 		for _, c := range ve.Children {
