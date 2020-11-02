@@ -164,7 +164,9 @@ func NicePrintStatement(st Statement, lev int) string {
 
 		s += fmt.Sprintf(")\n")
 
-		s += fmt.Sprintf("%s", NicePrintStatement(t.tagStruct.Slots.Default.Children, lev+1))
+		if t.tagStruct.Slots != nil && t.tagStruct.Slots.Default != nil {
+			s += fmt.Sprintf("%s", NicePrintStatement(t.tagStruct.Slots.Default.Children, lev+1))
+		}
 
 	case *ifStatement:
 		s += fmt.Sprintf("%sIf(%+v)\n", index, t.conditionCode)

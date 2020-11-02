@@ -120,11 +120,12 @@ func (p *Node) Close(tag string) *Node {
 				return p.GetParent(1)
 			}
 		}
-	} else if p.NodeType == TextNode {
-		// case for '<p>Title</p>'
+	} else {
+		// case for :
+		//   '<p>Title</p>'
+		//   '<p><!-- comment --></p>'
 
-		// 如果上一层的tag不是当前关闭的tag
-		// 则说明有误: '<input>12311</input>'
+		// 如果上一层的tag不是当前关闭的tag 则说明有误: '<input>12311</input>'
 		// 则忽略关闭: Closing tag matches nothing
 		if p.Parent.Tag != tag {
 			return p
@@ -132,9 +133,7 @@ func (p *Node) Close(tag string) *Node {
 			// 否则关闭父级
 			return p.GetParent(2)
 		}
-
 	}
-	return nil
 }
 
 func (p *Node) NicePrint(lev int) string {
