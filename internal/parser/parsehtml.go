@@ -53,10 +53,9 @@ func (p *Node) AddBor(n *Node) {
 func (p *Node) Add(n *Node) {
 	// 如果是容器, 则往里添加, 否则添加为兄弟节点
 	if p.NodeType == ElementNode || p.NodeType == RootNode {
-		switch p.Tag {
-		case "input", "br", "img", "meta":
+		if VoidElements[p.Tag] {
 			p.AddBor(n)
-		default:
+		} else {
 			p.AddChild(n)
 		}
 	} else {
