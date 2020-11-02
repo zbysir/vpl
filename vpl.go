@@ -23,6 +23,8 @@ type Vpl struct {
 
 	// 什么prop可以被写成attr(编译时)
 	canBeAttrsKey func(k string) bool
+
+	skipComment bool
 }
 
 type Options func(o *Vpl)
@@ -30,6 +32,12 @@ type Options func(o *Vpl)
 func WithCanBeAttrsKey(canBeAttr func(k string) bool) Options {
 	return func(o *Vpl) {
 		o.canBeAttrsKey = canBeAttr
+	}
+}
+
+func WithSkipComment(skip bool) Options {
+	return func(o *Vpl) {
+		o.skipComment = skip
 	}
 }
 
@@ -141,8 +149,10 @@ func New(options ...Options) *Vpl {
 				return cp.Exec(ctx, o)
 			}),
 		},
-		prototype:  NewScope(nil),
-		directives: map[string]Directive{},
+		prototype:     NewScope(nil),
+		directives:    map[string]Directive{},
+		canBeAttrsKey: DefaultCanBeAttr,
+		skipComment:   true,
 	}
 
 	for _, o := range options {
@@ -184,7 +194,8 @@ func (v *Vpl) ComponentFile(name string, path string) (err error) {
 // Declare a component by txt
 func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
 	s, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
-		CanBeAttr: v.canBeAttrsKey,
+		CanBeAttr:   v.canBeAttrsKey,
+		SkipComment: v.skipComment,
 	})
 	if err != nil {
 		return

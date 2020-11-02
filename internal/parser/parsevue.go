@@ -194,7 +194,8 @@ type VueElement struct {
 }
 
 type ParseVueNodeOptions struct {
-	CanBeAttr func(k string) bool
+	CanBeAttr   func(k string) bool
+	SkipComment bool
 }
 
 type VueElementParser struct {
@@ -248,6 +249,12 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 
 	var ifVueEle *VueElement
 	for _, e := range es {
+		if p.options.SkipComment {
+			if e.NodeType == CommentNode {
+				continue
+			}
+		}
+
 		var props Props
 		//var propClass *Prop
 		//var propStyle *Prop
@@ -530,6 +537,7 @@ func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err er
 
 				return false
 			},
+			SkipComment: false,
 		}
 	}
 	return VueElementParser{
