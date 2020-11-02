@@ -215,9 +215,26 @@ func (p VueElementParser) Parse(e *Node) (*VueElement, error) {
 	}
 
 	// 如果只有一个root节点, 则将自动分配attr
-	if len(ve.Children) == 1 {
+	var childLen int64
+	for _, c := range ve.Children {
+		if c.NodeType != CommentNode {
+			childLen++
+		}
+	}
+
+	if childLen == 1 {
 		for _, c := range ve.Children {
-			c.DistributionAttr = true
+			if c.NodeType == ElementNode {
+				c.DistributionAttr = true
+
+				// 如果if节点需要分发attr，那么else节点也需要
+				if c.VIf != nil {
+					for _, e := range c.VIf.ElseIf {
+						e.VueElement.DistributionAttr = true
+					}
+				}
+			}
+
 		}
 	}
 
@@ -522,6 +539,7 @@ func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err er
 
 func (p *VueElement) NicePrint(showChild bool, lev int) string {
 	s := strings.Repeat(" ", lev)
+	index := strings.Repeat(" ", lev)
 	switch p.NodeType {
 	case ElementNode, RootNode:
 		s += fmt.Sprintf("<%v", p.Tag)
@@ -545,6 +563,19 @@ func (p *VueElement) NicePrint(showChild bool, lev int) string {
 			}
 		}
 
+		// velse
+		if p.VIf != nil {
+			for _, ef := range p.VIf.ElseIf {
+				if ef.Condition != "" {
+					s += fmt.Sprintf("%sElseIf(%+v)\n", index, ef.Condition)
+				} else {
+					s += fmt.Sprintf("%sElse\n", index)
+				}
+
+				s += fmt.Sprintf("%s", ef.VueElement.NicePrint(showChild, lev+1))
+			}
+
+		}
 	case TextNode:
 		s += fmt.Sprintf("%s\n", p.Text)
 	case CommentNode:
