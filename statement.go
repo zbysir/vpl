@@ -1191,11 +1191,13 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	if !exist {
 		ctx.W.WriteString(fmt.Sprintf(`<%s data-err="not found component">`, c.ComponentKey))
 
-		child := slots.Default
-		if child != nil {
-			err := child.ExecSlot(ctx, nil)
-			if err != nil {
-				return nil
+		if slots != nil {
+			child := slots.Default
+			if child != nil {
+				err := child.ExecSlot(ctx, nil)
+				if err != nil {
+					return nil
+				}
 			}
 		}
 
@@ -1532,6 +1534,11 @@ var htmlTag = map[string]struct{}{
 	"span":   {},
 	"script": {},
 	"link":   {},
+	"a":      {},
+	"object": {},
+	"button": {},
+	"img":    {},
+	"i":      {},
 }
 
 // 通过Vue树，生成运行程序
