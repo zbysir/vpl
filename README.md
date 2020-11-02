@@ -37,12 +37,12 @@ func main() {
 <body>
 
 <div :id="id" style="font-size: 20px" :style="{color: color}">
-	<span v-if="color=='red'">
-        color is red
-    </span>
-	<span v-else>
-        color is {{color}}
-    </span>
+  <span v-if="color=='red'">
+    color is red
+  </span>
+  span v-else>
+    color is {{color}}
+  </span>
 </div>
 
 </body>
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	print(html)
-	// Output: <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>hello vpl</title></head><body><div style="color: red; font-size: 20px;">hello vpl</div></body></html>
+	// Output: <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>hello vpl</title></head><body><div style="color: red; font-size: 20px;"><span>color is red</span></div></body></html>
 }
 
 ```
