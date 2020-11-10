@@ -134,6 +134,8 @@ func NicePrintStatement(st Statement, lev int) string {
 
 	s := ""
 	switch t := st.(type) {
+	case *EmptyStatement:
+		s += fmt.Sprintf("%sEmptyStatement\n", index)
 	case *StrStatement:
 		s += fmt.Sprintf("%s%s\n", index, t.Str)
 	case *groupStatement:

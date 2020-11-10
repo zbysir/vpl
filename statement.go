@@ -615,8 +615,11 @@ func (s *StrStatement) Exec(ctx *StatementCtx, _ *StatementOptions) error {
 	return nil
 }
 
-func (s *StrStatement) AppendStr(str string) {
-	s.Str += str
+type EmptyStatement struct {
+}
+
+func (s *EmptyStatement) Exec(_ *StatementCtx, _ *StatementOptions) error {
+	return nil
 }
 
 // tag块
@@ -1111,7 +1114,7 @@ func (g *groupStatement) Finish() Statement {
 	}
 
 	if len(g.s) == 0 {
-		return nil
+		return &EmptyStatement{}
 	}
 
 	if len(g.s) == 1 {
@@ -1137,6 +1140,8 @@ func (g *groupStatement) Append(st Statement) {
 		return
 	}
 	switch appT := st.(type) {
+	case *EmptyStatement:
+		return
 	case *StrStatement:
 		g.strBuffer.WriteString(appT.Str)
 	case *groupStatement:
