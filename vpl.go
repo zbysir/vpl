@@ -284,7 +284,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 			// 将所有Props传递到组件中
 			VBind:      &vBindC{useProps: true},
 			Directives: nil,
-			Slots:      nil,
+			Slots:      p.Slots,
 		},
 	}
 
@@ -418,6 +418,9 @@ type RenderParam struct {
 	// 用于在整个运行环境共享变量, 如在一个方法/指令中读取另一个方法/指令里存储的数据
 	Store Store
 
+	// unused so far
 	Ctx   context.Context
 	Props *Props
+	// 渲染组件时给组件传递slots
+	Slots *SlotsC
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 )
 
+// 测试组件调用
 func TestComponent(t *testing.T) {
 	cases := []struct {
 		Name           string
@@ -205,6 +206,8 @@ func TestComponent(t *testing.T) {
 		})
 	}
 }
+
+// 测试动态组件
 func TestComponentDynamic(t *testing.T) {
 	cases := []struct {
 		Name           string

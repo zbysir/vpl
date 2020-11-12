@@ -103,7 +103,8 @@ func TestBase(t *testing.T) {
 				},
 			},
 			Output: "output/%s.html",
-		}, {
+		},
+		{
 			// 测试 单标签
 			Name:           "vHtml",
 			IndexComponent: "main",
@@ -204,6 +205,69 @@ func TestBase(t *testing.T) {
 			}
 		})
 	}
+}
+
+// 测试RenderComponent Api
+func TestRenderComponent(t *testing.T) {
+	layout := `<!DOCTYPE html>
+<html :lang="lang">
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+</head>
+<body>
+
+<ul>
+<li>
+<a href="/">首页</a>
+<a href="/about">关于我们</a>
+<a href="/contact">联系我们</a>
+</li>
+</ul>
+
+<slot></slot>
+</body>`
+
+	contentTpl := `
+TestContent
+`
+
+	v := vpl.New()
+	err := v.ComponentTxt("layout", layout)
+	if err != nil {
+		return
+	}
+
+	props := vpl.NewProps()
+	props.Append("title", "title")
+	props.Append("lang", "zh")
+
+	contentStatement, err := vpl.ParseHtmlToStatement(contentTpl, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html, err := v.RenderComponent("layout", &vpl.RenderParam{
+		Global: nil,
+		Store:  nil,
+		Ctx:    nil,
+		Props:  props,
+		Slots: &vpl.SlotsC{
+			Default: &vpl.SlotC{
+				Children: contentStatement,
+			},
+			NamedSlot: nil,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	if html != `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>title</title></head><body><ul><li><a href="/">首页</a><a href="/about">关于我们</a><a href="/contact">联系我们</a></li></ul>TestContent</body></html>` {
+		t.Fatalf("组件渲染有误 输出: %s", html)
+	}
+	t.Logf("%s", html)
 }
 
 type data struct {
