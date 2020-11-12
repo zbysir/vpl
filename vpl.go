@@ -193,7 +193,20 @@ func (v *Vpl) ComponentFile(name string, path string) (err error) {
 
 // Declare a component by txt
 func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
-	s, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
+	// 类似以下代码中的v-slot是无效的写法.
+	// <template>
+	//   <h1 v-slot><h1>
+	// </template>
+	// 而v-slot只能使用在调用组件时:
+	// <template>
+	//   <Info>
+	//     <h1 v-slot><h1>
+	//   </Info>
+	// </template>
+	// 在这个情况下, 编译组件不会返回slot(此时的slot被存放在ComponentStatement上).
+	//
+	// 综上, 这里不需要管ParseHtmlToStatement返回的slots值.
+	s, _, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
 		CanBeAttr:   v.canBeAttrsKey,
 		SkipComment: v.skipComment,
 	})
@@ -230,7 +243,20 @@ func (v *Vpl) NewScope() *Scope {
 
 // tpl e.g.: <main v-bind="$props"></main>
 func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
-	statement, err := ParseHtmlToStatement(tpl, &parser.ParseVueNodeOptions{
+	// 类似以下代码中的v-slot是无效的写法.
+	// <template>
+	//   <h1 v-slot><h1>
+	// </template>
+	// 而v-slot只能使用在调用组件时:
+	// <template>
+	//   <Info>
+	//     <h1 v-slot><h1>
+	//   </Info>
+	// </template>
+	// 在这个情况下, 编译组件不会返回slot(此时的slot被存放在ComponentStatement上).
+	//
+	// 综上, 这里不需要管ParseHtmlToStatement返回的slots值.
+	statement, _, err := ParseHtmlToStatement(tpl, &parser.ParseVueNodeOptions{
 		CanBeAttr: v.canBeAttrsKey,
 	})
 	if err != nil {

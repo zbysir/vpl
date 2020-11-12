@@ -217,6 +217,8 @@ func TestRenderComponent(t *testing.T) {
 </head>
 <body>
 
+<slot name="title"></slot>
+
 <ul>
 <li>
 <a href="/">首页</a>
@@ -230,6 +232,10 @@ func TestRenderComponent(t *testing.T) {
 
 	contentTpl := `
 TestContent
+
+<h1 v-slot:title>
+Title from content
+</h1>
 `
 
 	v := vpl.New()
@@ -242,7 +248,7 @@ TestContent
 	props.Append("title", "title")
 	props.Append("lang", "zh")
 
-	contentStatement, err := vpl.ParseHtmlToStatement(contentTpl, nil)
+	contentStatement, slots, err := vpl.ParseHtmlToStatement(contentTpl, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +262,7 @@ TestContent
 			Default: &vpl.SlotC{
 				Children: contentStatement,
 			},
-			NamedSlot: nil,
+			NamedSlot: slots.NamedSlot,
 		},
 	})
 	if err != nil {
@@ -264,7 +270,7 @@ TestContent
 		return
 	}
 
-	if html != `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>title</title></head><body><ul><li><a href="/">首页</a><a href="/about">关于我们</a><a href="/contact">联系我们</a></li></ul>TestContent</body></html>` {
+	if html != `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>title</title></head><body><h1>Title from content</h1><ul><li><a href="/">首页</a><a href="/about">关于我们</a><a href="/contact">联系我们</a></li></ul>TestContent</body></html>` {
 		t.Fatalf("组件渲染有误 输出: %s", html)
 	}
 	t.Logf("%s", html)

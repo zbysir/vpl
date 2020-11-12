@@ -480,9 +480,6 @@ type ComponentStruct struct {
 	//  如 <Menu :class="['a','b']" class="c">
 	//  那么PropClass的值是: ['a', 'b']
 	VBind *vBindC
-	// 静态class, 将会和动态class合并
-	StaticClass parser.Class
-	StaticStyle parser.Styles
 
 	Directives directivesC
 	// 传递给这个组件的Slots
@@ -1416,20 +1413,20 @@ func (s *Slots) Get(key string) *Slot {
 	return s.NamedSlot[key]
 }
 
-func ParseHtmlToStatement(tpl string, options *parser.ParseVueNodeOptions) (Statement, error) {
+func ParseHtmlToStatement(tpl string, options *parser.ParseVueNodeOptions) (Statement, *SlotsC, error) {
 	nt, err := parser.ParseHtml(tpl)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	vn, err := parser.ToVueNode(nt, options)
 	if err != nil {
-		return nil, fmt.Errorf("parseToVue err: %w", err)
+		return nil, nil, fmt.Errorf("parseToVue err: %w", err)
 	}
-	statement, _, err := toStatement(vn)
+	statement, slots, err := toStatement(vn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return statement, nil
+	return statement, slots, nil
 }
 
 // 执行语句(组件/Tag)所需的参数
