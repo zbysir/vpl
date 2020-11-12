@@ -1545,6 +1545,12 @@ var htmlTag = map[string]struct{}{
 	"img":        {},
 	"i":          {},
 	"center":     {},
+	"table":      {},
+	"tbody":      {},
+	"thead":      {},
+	"th":         {},
+	"tr":         {},
+	"td":         {},
 }
 
 // 通过Vue树，生成运行程序
