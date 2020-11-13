@@ -749,6 +749,8 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 			execBindProps(t, ctx, &attrKeys, &attr, &class, &style)
 		case skipMarshalMap:
 			execBindProps(t, ctx, &attrKeys, &attr, &class, &style)
+		case *Props:
+			execBindProps(t.ToMap(), ctx, &attrKeys, &attr, &class, &style)
 		default:
 			panic(fmt.Sprintf("bad Type of Vbind: %T", b))
 		}

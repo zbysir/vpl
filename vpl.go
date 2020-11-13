@@ -331,7 +331,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 		CanBeAttrsKey: v.canBeAttrsKey,
 	}
 
-	scope := v.NewScope()
+	scope := ctx.NewScope()
 	scope.Set("$props", p.Props)
 	err = statement.Exec(ctx, &StatementOptions{
 		Slots:  nil,
