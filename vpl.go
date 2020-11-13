@@ -23,6 +23,8 @@ type Vpl struct {
 
 	// 什么prop可以被写成attr(编译时)
 	canBeAttrsKey func(k string) bool
+
+	skipComment bool
 }
 
 type Options func(o *Vpl)
@@ -30,6 +32,12 @@ type Options func(o *Vpl)
 func WithCanBeAttrsKey(canBeAttr func(k string) bool) Options {
 	return func(o *Vpl) {
 		o.canBeAttrsKey = canBeAttr
+	}
+}
+
+func WithSkipComment(skip bool) Options {
+	return func(o *Vpl) {
+		o.skipComment = skip
 	}
 }
 
@@ -43,6 +51,9 @@ func New(options ...Options) *Vpl {
 			// 注意, 所有slot执行都有"编译作用域的问题"(https://cn.vuejs.org/v2/guide/components-slots.html#%E7%BC%96%E8%AF%91%E4%BD%9C%E7%94%A8%E5%9F%9F)
 			// slot是在父组件声明并会使用变量, 却在子组件中运行, 所以在执行slot时需要使用父组件环境.
 			"template": FuncStatement(func(ctx *StatementCtx, o *StatementOptions) error {
+				if o.Slots == nil {
+					return nil
+				}
 				slot := o.Slots.Default
 				if slot == nil {
 					return nil
@@ -138,8 +149,10 @@ func New(options ...Options) *Vpl {
 				return cp.Exec(ctx, o)
 			}),
 		},
-		prototype:  NewScope(nil),
-		directives: map[string]Directive{},
+		prototype:     NewScope(nil),
+		directives:    map[string]Directive{},
+		canBeAttrsKey: DefaultCanBeAttr,
+		skipComment:   true,
 	}
 
 	for _, o := range options {
@@ -180,8 +193,22 @@ func (v *Vpl) ComponentFile(name string, path string) (err error) {
 
 // Declare a component by txt
 func (v *Vpl) ComponentTxt(name string, txt string) (err error) {
-	s, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
-		CanBeAttr: v.canBeAttrsKey,
+	// 类似以下代码中的v-slot是无效的写法.
+	// <template>
+	//   <h1 v-slot><h1>
+	// </template>
+	// 而v-slot只能使用在调用组件时:
+	// <template>
+	//   <Info>
+	//     <h1 v-slot><h1>
+	//   </Info>
+	// </template>
+	// 在这个情况下, 编译组件不会返回slot(此时的slot被存放在ComponentStatement上).
+	//
+	// 综上, 这里不需要管ParseHtmlToStatement返回的slots值.
+	s, _, err := ParseHtmlToStatement(txt, &parser.ParseVueNodeOptions{
+		CanBeAttr:   v.canBeAttrsKey,
+		SkipComment: v.skipComment,
 	})
 	if err != nil {
 		return
@@ -216,7 +243,20 @@ func (v *Vpl) NewScope() *Scope {
 
 // tpl e.g.: <main v-bind="$props"></main>
 func (v *Vpl) RenderTpl(tpl string, p *RenderParam) (html string, err error) {
-	statement, err := ParseHtmlToStatement(tpl, &parser.ParseVueNodeOptions{
+	// 类似以下代码中的v-slot是无效的写法.
+	// <template>
+	//   <h1 v-slot><h1>
+	// </template>
+	// 而v-slot只能使用在调用组件时:
+	// <template>
+	//   <Info>
+	//     <h1 v-slot><h1>
+	//   </Info>
+	// </template>
+	// 在这个情况下, 编译组件不会返回slot(此时的slot被存放在ComponentStatement上).
+	//
+	// 综上, 这里不需要管ParseHtmlToStatement返回的slots值.
+	statement, _, err := ParseHtmlToStatement(tpl, &parser.ParseVueNodeOptions{
 		CanBeAttr: v.canBeAttrsKey,
 	})
 	if err != nil {
@@ -270,7 +310,7 @@ func (v *Vpl) RenderComponent(component string, p *RenderParam) (html string, er
 			// 将所有Props传递到组件中
 			VBind:      &vBindC{useProps: true},
 			Directives: nil,
-			Slots:      nil,
+			Slots:      p.Slots,
 		},
 	}
 
@@ -404,6 +444,9 @@ type RenderParam struct {
 	// 用于在整个运行环境共享变量, 如在一个方法/指令中读取另一个方法/指令里存储的数据
 	Store Store
 
+	// unused so far
 	Ctx   context.Context
 	Props *Props
+	// 渲染组件时给组件传递slots
+	Slots *SlotsC
 }

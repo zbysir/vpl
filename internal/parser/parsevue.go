@@ -194,7 +194,8 @@ type VueElement struct {
 }
 
 type ParseVueNodeOptions struct {
-	CanBeAttr func(k string) bool
+	CanBeAttr   func(k string) bool
+	SkipComment bool
 }
 
 type VueElementParser struct {
@@ -209,10 +210,32 @@ func (p VueElementParser) Parse(e *Node) (*VueElement, error) {
 
 	ve := vs[0]
 
+	// 如果根节点只有要给并且是template，则是vue写法, 需要删除掉template来兼容此语法
+	if len(ve.Children) == 1 && ve.Children[0].Tag == "template" {
+		ve.Children = ve.Children[0].Children
+	}
+
 	// 如果只有一个root节点, 则将自动分配attr
-	if len(ve.Children) == 1 {
+	var childLen int64
+	for _, c := range ve.Children {
+		if c.NodeType != CommentNode {
+			childLen++
+		}
+	}
+
+	if childLen == 1 {
 		for _, c := range ve.Children {
-			c.DistributionAttr = true
+			if c.NodeType == ElementNode {
+				c.DistributionAttr = true
+
+				// 如果if节点需要分发attr，那么else节点也需要
+				if c.VIf != nil {
+					for _, e := range c.VIf.ElseIf {
+						e.VueElement.DistributionAttr = true
+					}
+				}
+			}
+
 		}
 	}
 
@@ -226,6 +249,12 @@ func (p VueElementParser) parseList(es []*Node) (ve []*VueElement, err error) {
 
 	var ifVueEle *VueElement
 	for _, e := range es {
+		if p.options.SkipComment {
+			if e.NodeType == CommentNode {
+				continue
+			}
+		}
+
 		var props Props
 		//var propClass *Prop
 		//var propStyle *Prop
@@ -508,6 +537,7 @@ func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err er
 
 				return false
 			},
+			SkipComment: false,
 		}
 	}
 	return VueElementParser{
@@ -517,6 +547,7 @@ func ToVueNode(node *Node, options *ParseVueNodeOptions) (vn *VueElement, err er
 
 func (p *VueElement) NicePrint(showChild bool, lev int) string {
 	s := strings.Repeat(" ", lev)
+	index := strings.Repeat(" ", lev)
 	switch p.NodeType {
 	case ElementNode, RootNode:
 		s += fmt.Sprintf("<%v", p.Tag)
@@ -540,6 +571,19 @@ func (p *VueElement) NicePrint(showChild bool, lev int) string {
 			}
 		}
 
+		// velse
+		if p.VIf != nil {
+			for _, ef := range p.VIf.ElseIf {
+				if ef.Condition != "" {
+					s += fmt.Sprintf("%sElseIf(%+v)\n", index, ef.Condition)
+				} else {
+					s += fmt.Sprintf("%sElse\n", index)
+				}
+
+				s += fmt.Sprintf("%s", ef.VueElement.NicePrint(showChild, lev+1))
+			}
+
+		}
 	case TextNode:
 		s += fmt.Sprintf("%s\n", p.Text)
 	case CommentNode:

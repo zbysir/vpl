@@ -480,9 +480,6 @@ type ComponentStruct struct {
 	//  如 <Menu :class="['a','b']" class="c">
 	//  那么PropClass的值是: ['a', 'b']
 	VBind *vBindC
-	// 静态class, 将会和动态class合并
-	StaticClass parser.Class
-	StaticStyle parser.Styles
 
 	Directives directivesC
 	// 传递给这个组件的Slots
@@ -615,8 +612,11 @@ func (s *StrStatement) Exec(ctx *StatementCtx, _ *StatementOptions) error {
 	return nil
 }
 
-func (s *StrStatement) AppendStr(str string) {
-	s.Str += str
+type EmptyStatement struct {
+}
+
+func (s *EmptyStatement) Exec(_ *StatementCtx, _ *StatementOptions) error {
+	return nil
 }
 
 // tag块
@@ -1111,7 +1111,7 @@ func (g *groupStatement) Finish() Statement {
 	}
 
 	if len(g.s) == 0 {
-		return nil
+		return &EmptyStatement{}
 	}
 
 	if len(g.s) == 1 {
@@ -1137,6 +1137,8 @@ func (g *groupStatement) Append(st Statement) {
 		return
 	}
 	switch appT := st.(type) {
+	case *EmptyStatement:
+		return
 	case *StrStatement:
 		g.strBuffer.WriteString(appT.Str)
 	case *groupStatement:
@@ -1191,11 +1193,13 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	if !exist {
 		ctx.W.WriteString(fmt.Sprintf(`<%s data-err="not found component">`, c.ComponentKey))
 
-		child := slots.Default
-		if child != nil {
-			err := child.Exec(ctx, nil)
-			if err != nil {
-				return nil
+		if slots != nil {
+			child := slots.Default
+			if child != nil {
+				err := child.Exec(ctx, nil)
+				if err != nil {
+					return nil
+				}
 			}
 		}
 
@@ -1412,17 +1416,17 @@ func (s *Slots) Get(key string) *Slot {
 func ParseHtmlToStatement(tpl string, options *parser.ParseVueNodeOptions) (Statement, error) {
 	nt, err := parser.ParseHtml(tpl)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	vn, err := parser.ToVueNode(nt, options)
 	if err != nil {
-		return nil, fmt.Errorf("parseToVue err: %w", err)
+		return nil, nil, fmt.Errorf("parseToVue err: %w", err)
 	}
-	statement, _, err := toStatement(vn)
+	statement, slots, err := toStatement(vn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return statement, nil
+	return statement, slots, nil
 }
 
 // 执行语句(组件/Tag)所需的参数
@@ -1512,26 +1516,41 @@ func canBeStr(v *parser.VueElement) bool {
 }
 
 var htmlTag = map[string]struct{}{
-	"html":   {},
-	"head":   {},
-	"footer": {},
-	"body":   {},
-	"meta":   {},
-	"title":  {},
-	"div":    {},
-	"input":  {},
-	"p":      {},
-	"h1":     {},
-	"h2":     {},
-	"h3":     {},
-	"h4":     {},
-	"h5":     {},
-	"h6":     {},
-	"ul":     {},
-	"li":     {},
-	"span":   {},
-	"script": {},
-	"link":   {},
+	"html":       {},
+	"head":       {},
+	"header":     {},
+	"footer":     {},
+	"body":       {},
+	"meta":       {},
+	"title":      {},
+	"div":        {},
+	"input":      {},
+	"p":          {},
+	"h1":         {},
+	"h2":         {},
+	"h3":         {},
+	"h4":         {},
+	"h5":         {},
+	"h6":         {},
+	"hr":         {},
+	"blockquote": {},
+	"ul":         {},
+	"li":         {},
+	"span":       {},
+	"script":     {},
+	"link":       {},
+	"a":          {},
+	"object":     {},
+	"button":     {},
+	"img":        {},
+	"i":          {},
+	"center":     {},
+	"table":      {},
+	"tbody":      {},
+	"thead":      {},
+	"th":         {},
+	"tr":         {},
+	"td":         {},
 }
 
 // 通过Vue树，生成运行程序
