@@ -43,12 +43,15 @@ func TestSlot(t *testing.T) {
 	<Infos :infos="infos">
 		<!-- SlotStatement -->
 		<h1 v-slot:title="props">({{infos.length}})条信息 {{props.title}}:</h1>
+author2: {{author}}
 	</Infos>
+author1: {{author}}
 </div>`,
 				},
 				{
 					Name: "Infos",
 					Txt: `
+author3: {{author}}
 <slot>默认备选</slot>
 <slot name="title" :title="'Infos'"></slot>
 <slot name="title2">标题2 备选</slot>

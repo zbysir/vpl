@@ -1413,7 +1413,7 @@ func (s *Slots) Get(key string) *Slot {
 	return s.NamedSlot[key]
 }
 
-func ParseHtmlToStatement(tpl string, options *parser.ParseVueNodeOptions) (Statement, error) {
+func ParseHtmlToStatement(tpl string, options *parser.ParseVueNodeOptions) (Statement, *SlotsC, error) {
 	nt, err := parser.ParseHtml(tpl)
 	if err != nil {
 		return nil, nil, err
