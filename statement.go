@@ -912,7 +912,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		// 子节点
 		children := slots.Default
 		if children != nil {
-			err := children.ExecSlot(ctx, nil)
+			err := children.Exec(ctx, nil)
 			if err != nil {
 				return err
 			}
@@ -1193,7 +1193,7 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 
 		child := slots.Default
 		if child != nil {
-			err := child.ExecSlot(ctx, nil)
+			err := child.Exec(ctx, nil)
 			if err != nil {
 				return nil
 			}
@@ -1267,7 +1267,7 @@ type ExecSlotOptions struct {
 	SlotProps *Props
 }
 
-func (s *Slot) ExecSlot(ctx *StatementCtx, o *StatementOptions) error {
+func (s *Slot) Exec(ctx *StatementCtx, o *StatementOptions) error {
 	if s.Children == nil {
 		return nil
 	}
