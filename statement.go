@@ -1539,6 +1539,7 @@ var htmlTag = map[string]struct{}{
 	"ul":         {},
 	"li":         {},
 	"span":       {},
+	"style":      {},
 	"script":     {},
 	"link":       {},
 	"a":          {},
@@ -1553,6 +1554,9 @@ var htmlTag = map[string]struct{}{
 	"th":         {},
 	"tr":         {},
 	"td":         {},
+	"pre":        {},
+	"code":       {},
+	"br":         {},
 }
 
 // 通过Vue树，生成运行程序
