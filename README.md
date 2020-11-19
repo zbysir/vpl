@@ -40,7 +40,7 @@ func main() {
   <span v-if="color=='red'">
     color is red
   </span>
-  span v-else>
+  <span v-else>
     color is {{color}}
   </span>
 </div>
