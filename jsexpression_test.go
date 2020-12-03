@@ -2,6 +2,7 @@ package vpl
 
 import (
 	"fmt"
+	"github.com/dop251/goja"
 	"github.com/robertkrimen/otto/parser"
 	"github.com/zbysir/vpl/internal/lib/log"
 	"testing"
@@ -39,6 +40,7 @@ func TestRunJs(t *testing.T) {
 		{Code: "info[info.sexkey]", Value: 26},
 
 		{Code: "{'abc': 'abc'}['abc']", Value: "abc"},
+		{Code: "{2: 3}['2']", Value: "3"},
 
 		// call function
 		{Code: "concat(1,2)", Value: "12"},
@@ -87,4 +89,26 @@ func TestInterfaceToBool(t *testing.T) {
 		t.Fatalf("%v , want false, but:%v", a, interfaceToBool(a))
 	}
 
+}
+
+func TestGoja(t *testing.T) {
+	vm := goja.New()
+	v, err := vm.RunString("2 + 2")
+	if err != nil {
+		panic(err)
+	}
+	if num := v.Export().(int64); num != 4 {
+		panic(num)
+	}
+}
+
+func TestGojaEs6(t *testing.T) {
+	vm := goja.New()
+	// panic
+	// not support es6 feature: Destructuring
+	v, err := vm.RunString("var a = {a:1}; var b = {...a, c:1}; b")
+	if err != nil {
+		panic(err)
+	}
+	t.Log(v.Export())
 }
