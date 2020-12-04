@@ -1,7 +1,9 @@
 package vpl
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/zbysir/vpl/internal/lib/log"
 	"github.com/zbysir/vpl/internal/parser"
 	"github.com/zbysir/vpl/internal/util"
 	"sort"
@@ -202,4 +204,21 @@ type skipMarshalMap map[string]interface{}
 
 func (s skipMarshalMap) MarshalJSON() ([]byte, error) {
 	return nil, nil
+}
+
+// Copy convert a complex structure to a structure containing only basic types.
+// Please refer to README.md#Admonition
+func Copy(i interface{}) (dst interface{}) {
+	bs, err := json.Marshal(i)
+	if err != nil {
+		log.Warningf("Copy error on Marshal: %v", err)
+		return nil
+	}
+
+	err = json.Unmarshal(bs, &dst)
+	if err != nil {
+		log.Warningf("Copy error on Unmarshal: %v", err)
+		return nil
+	}
+	return
 }

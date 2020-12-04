@@ -104,6 +104,26 @@ vpl.RenderParam{
 }
 ```
 
+### Admonition
+
+All data used by Vpl must be a golang base types, such as `int64`, `int`, `float32`, `float64`, `[]interface`, `map[string]interface{}`.
+
+The following example is wrong:
+```go
+props.Append("list", [3]int{1, 2, 3})
+```
+You should use `[]interface` type instead of `[3]int`:
+```
+props.Append("list", []interface{}{1, 2, 3})
+```
+
+For convenience, vpl provides vpl.Copy function to convert a complex structure to a structure containing only basic types.
+```
+props.Append("list", vpl.Copy([3]int{1, 2, 3}))
+```
+
+Don't worry too much about performance, it is only executed once in each render.
+
 ## With Go features
 Let's add some go features to vpl.
 
