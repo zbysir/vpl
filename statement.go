@@ -469,22 +469,8 @@ type directiveC struct {
 type directivesC []directiveC
 
 // 组件的属性
-type ComponentStruct struct {
-	// Props: 无论动态还是静态, 都是Props
-	//
-	//  如: <Menu :data="data" id="abc" :style="{left: '1px'}">
-	//  其中 Props 值为: data, id
-	//  其中 PropStyle 值为: style
-	Props propsC
-	// PropClass指动态class
-	//  如 <Menu :class="['a','b']" class="c">
-	//  那么PropClass的值是: ['a', 'b']
-	VBind *vBindC
+type ComponentStruct = tagStruct
 
-	Directives directivesC
-	// 传递给这个组件的Slots
-	Slots *SlotsC
-}
 
 // VBind 语法, 一次传递多个prop
 // v-bind='{id: id, 'other-attr': otherAttr}'
@@ -670,17 +656,17 @@ func execBindProps(t map[string]interface{}, ctx *StatementCtx, attrKeys *[]stri
 }
 
 // 如果tag没有指令, 则也不需要生成props, 而是将propsC直接运行成为attr.
-func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
+func (t *tagStruct) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 	var style map[string]interface{}
 	var class strings.Builder
 
 	// 使用attr来解决attr会合并的问题.
 	// 如组件外传递的attr会覆盖与根组件相同的attr
-	attrKeys := make([]string, 0, len(t.tagStruct.Props))
-	attr := make(map[string]string, len(t.tagStruct.Props))
+	attrKeys := make([]string, 0, len(t.Props))
+	attr := make(map[string]string, len(t.Props))
 
-	if len(t.tagStruct.Props) != 0 {
-		for _, p := range t.tagStruct.Props {
+	if len(t.Props) != 0 {
+		for _, p := range t.Props {
 			if p.Key == "class" {
 				// 如果class是静态的, 则不会发生合并的情况, 直接写入到write.
 				if p.IsStatic {
@@ -741,8 +727,8 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 	}
 
 	// 可能需要将 props和vBind中重复的attr去重
-	if t.tagStruct.VBind != nil {
-		var b = t.tagStruct.VBind.exec(rCtx)
+	if t.VBind != nil {
+		var b = t.VBind.exec(rCtx)
 		switch t := b.(type) {
 		case nil:
 		case map[string]interface{}:
@@ -901,7 +887,7 @@ func (t *tagStatement) Exec(ctx *StatementCtx, o *StatementOptions) error {
 		}
 
 	} else {
-		err := t.ExecAttr(ctx, rCtx)
+		err := t.tagStruct.ExecAttr(ctx, rCtx)
 		if err != nil {
 			return err
 		}
@@ -1193,7 +1179,9 @@ func (c *ComponentStatement) Exec(ctx *StatementCtx, o *StatementOptions) error 
 	cp, exist := ctx.Components[c.ComponentKey]
 	// 没有找到组件时直接渲染自身的子组件
 	if !exist {
-		ctx.W.WriteString(fmt.Sprintf(`<%s data-err="not found component">`, c.ComponentKey))
+		ctx.W.WriteString(fmt.Sprintf(`<%s data-err="not found component"`, c.ComponentKey))
+		c.ComponentStruct.ExecAttr(ctx, rCtx)
+		ctx.W.WriteString(`>`)
 
 		if slots != nil {
 			child := slots.Default

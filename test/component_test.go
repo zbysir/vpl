@@ -38,7 +38,7 @@ func TestComponent(t *testing.T) {
 <div>
 	Infos:
 	<Infos :infos="infos" :id="id" :class=[cla] :style="{color: 'red'}"></Infos>
-	<InfosX :infos="infos">我是错误的组件 {{infos.length}}</Infos>
+	<InfosX :infos="infos" class=abc style="a:b;" data-b=a>我是错误的组件 {{infos.length}}</Infos>
 </div>`,
 				},
 				{
@@ -73,6 +73,10 @@ func TestComponent(t *testing.T) {
 
 				if !strings.Contains(html, `id="id"`) {
 					return errors.New("处理attr继承有误")
+				}
+
+				if !strings.Contains(html, `style="a: b;"`) {
+					return errors.New("处理错误的组件有误")
 				}
 
 				return nil
