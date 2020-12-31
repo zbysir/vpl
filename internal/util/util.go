@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -89,8 +90,24 @@ func InterfaceToStr(s interface{}, escaped ...bool) (d string) {
 	}
 	return
 }
+
 func Escape(src string) string {
 	return html.EscapeString(src)
+}
+
+//
+var styleEscaper = strings.NewReplacer(
+	`&`, "&amp;",
+	// 单引号在style中是合法的.
+	//`'`, "&#39;", // "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+	`<`, "&lt;",
+	`>`, "&gt;",
+	`"`, "&#34;", // "&#34;" is shorter than "&quot;".
+)
+
+// EscapeStyle 和 html.EscapeString() 不同,  EscapeStyle 不会再替换单引号 ', 因为单引号在style中是合法的.
+func EscapeStyle(src string) string {
+	return styleEscaper.Replace(src)
 }
 
 // 字符串false,0 会被认定为false

@@ -774,7 +774,7 @@ func (t *tagStatement) ExecAttr(ctx *StatementCtx, rCtx *RenderCtx) error {
 				st.WriteString(": ")
 				switch v := v.(type) {
 				case string:
-					st.WriteString(util.Escape(v))
+					st.WriteString(util.EscapeStyle(v))
 				default:
 					bs, _ := json.Marshal(v)
 					st.WriteString(util.Escape(string(bs)))
@@ -977,10 +977,10 @@ func getStyleFromProps(styleProps interface{}) Styles {
 		for k, v := range t {
 			switch v := v.(type) {
 			case string:
-				st.Add(k, util.Escape(v))
+				st.Add(k, util.EscapeStyle(v))
 			default:
 				bs, _ := json.Marshal(v)
-				st.Add(k, util.Escape(string(bs)))
+				st.Add(k, util.EscapeStyle(string(bs)))
 			}
 		}
 	}
