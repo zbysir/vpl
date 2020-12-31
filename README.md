@@ -174,4 +174,4 @@ Now it only takes 2s.
 Just use the Vuejs plugin.
 
 ## Dependencies
-- github.com/robertkrimen/otto:  Used to parse Js expression.
+- github.com/robertkrimen/otto: It is used to parse Js expression.
