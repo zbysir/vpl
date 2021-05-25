@@ -145,7 +145,7 @@ Let's see this example:
     </div>
 </div>
 ```
-If the template is executed in order, it will take 3s. To parallel them, you can wrap them with `parallel` component.
+It will take 3s if the template is executed in order. You can wrap them with `parallel` component to parallel them.
 
 ```vue
 <div>
@@ -163,7 +163,7 @@ If the template is executed in order, it will take 3s. To parallel them, you can
     </parallel>
 </div>
 ```
-Now it only takes 2s.
+It only takes 2s now.
 
 ## Docs
 - [Syntax Reference](./doc/syntax.md)
