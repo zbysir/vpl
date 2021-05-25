@@ -368,6 +368,14 @@ func ShouldLookInterface(data interface{}, keys ...string) (desc interface{}, ro
 	currKey := keys[0]
 
 	switch data := data.(type) {
+	case interface{ Get(string) interface{} }:
+		c := data.Get(currKey)
+		if c == nil {
+			return
+		}
+		rootExist = true
+		desc, _, exist = ShouldLookInterface(c, keys[1:]...)
+		return
 	case map[string]interface{}:
 		// 对象
 		c, ok := data[currKey]

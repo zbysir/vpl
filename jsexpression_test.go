@@ -42,6 +42,9 @@ func TestRunJs(t *testing.T) {
 		{Code: "{'abc': 'abc'}['abc']", Value: "abc"},
 		{Code: "{2: 3}['2']", Value: "3"},
 
+		// getter
+		{Code: "getter.a", Value: "1"},
+
 		// call function
 		{Code: "concat(1,2)", Value: "12"},
 	}
@@ -52,6 +55,11 @@ func TestRunJs(t *testing.T) {
 		"info": map[string]interface{}{
 			"sex":    26,
 			"sexkey": "sex",
+		},
+		"getter": DataGet{
+			data: map[string]interface{}{
+				"a": 1,
+			},
 		},
 		"concat": func(ctx *RenderCtx, args ...interface{}) interface{} {
 			return fmt.Sprintf("%+v%+v", args[0], args[1])
