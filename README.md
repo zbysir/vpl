@@ -99,8 +99,8 @@ props.AppendMap(map[string]interface{}{
 
 ```
 vpl.RenderParam{
-    Global: nil, // Defined Global Variable in this Render Content.
-    Props:  props, // Props to Render Component.
+    Global: nil, // Defined Global Variable in this rendering.
+    Props:  props, // Parameters of the rendering component.
 }
 ```
 
