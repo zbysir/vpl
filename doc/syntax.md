@@ -103,7 +103,7 @@ Let's see this example:
     </div>
 </div>
 ```
-Tt will take 3s if the template is executed in order. You can wrap them with `parallel` component to parallel them.
+It will take 3s if the template is executed in order. You can wrap them with `parallel` to parallel them.
 
 ```vue
 <div>
