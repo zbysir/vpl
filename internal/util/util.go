@@ -80,6 +80,11 @@ func InterfaceToStr(s interface{}, escaped ...bool) (d string) {
 		d = strconv.FormatInt(a, 10)
 	case float64:
 		d = strconv.FormatFloat(a, 'f', -1, 64)
+	case interface{ MarshalJSON() ([]byte, error) }:
+		bs, _ := a.MarshalJSON()
+		d = string(bs)
+	case interface{ String() string }:
+		d = a.String()
 	default:
 		bs, _ := json.Marshal(a)
 		d = string(bs)
