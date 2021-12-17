@@ -2,10 +2,11 @@ package vpl
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/dop251/goja"
 	"github.com/robertkrimen/otto/parser"
 	"github.com/zbysir/vpl/internal/lib/log"
-	"testing"
 )
 
 type DataGet struct {
@@ -33,6 +34,11 @@ func TestRunJs(t *testing.T) {
 		{Code: "!0", Value: true},
 		{Code: "!(a+1)", Value: false},
 		{Code: "!(a-1)", Value: true},
+
+		{Code: "2 > 1", Value: true},
+		{Code: "2 >= 1", Value: true},
+		{Code: "1 < 2", Value: true},
+		{Code: "1 <= 2", Value: true},
 
 		{Code: "info.sex", Value: 26},
 		{Code: "info.sex+1", Value: 27},

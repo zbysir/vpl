@@ -3,10 +3,11 @@ package vpl
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	"github.com/robertkrimen/otto/ast"
 	"github.com/robertkrimen/otto/parser"
 	"github.com/robertkrimen/otto/token"
-	"strconv"
 )
 
 func compileJS(code string) (node ast.Node, err error) {
@@ -99,6 +100,10 @@ func runJsExpression(node ast.Node, ctx *RenderCtx) (r interface{}, err error) {
 			return interfaceLess(left, right), nil
 		case token.GREATER:
 			return interfaceGreater(left, right), nil
+		case token.LESS_OR_EQUAL:
+			return interfaceLessOrEqual(left, right), nil
+		case token.GREATER_OR_EQUAL:
+			return interfaceGreaterOrEqual(left, right), nil
 
 		default:
 			panic(fmt.Sprintf("bad Operator for BinaryExpression: %s", o))
@@ -320,6 +325,19 @@ func interfaceLess(a, b interface{}) interface{} {
 	return an < bn
 }
 
+func interfaceLessOrEqual(a, b interface{}) interface{} {
+	an, ok := isNumber(a)
+	if !ok {
+		return interfaceToStr(a) <= interfaceToStr(b)
+	}
+	bn, ok := isNumber(b)
+	if !ok {
+		return interfaceToStr(a) <= interfaceToStr(b)
+	}
+
+	return an <= bn
+}
+
 func interfaceGreater(a, b interface{}) interface{} {
 	an, ok := isNumber(a)
 	if !ok {
@@ -331,6 +349,19 @@ func interfaceGreater(a, b interface{}) interface{} {
 	}
 
 	return an > bn
+}
+
+func interfaceGreaterOrEqual(a, b interface{}) interface{} {
+	an, ok := isNumber(a)
+	if !ok {
+		return interfaceToStr(a) >= interfaceToStr(b)
+	}
+	bn, ok := isNumber(b)
+	if !ok {
+		return interfaceToStr(a) >= interfaceToStr(b)
+	}
+
+	return an >= bn
 }
 
 // 用于{{func(a)}}语法
